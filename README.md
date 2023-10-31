@@ -7,4 +7,4 @@ https://github.com/koenhagen/lb-top-2000
 https://github.com/frozenpandaman/letterboxd-userscripts
 
 
-![Uploading Screenshot 2023-10-31 at 12.33.22.png…]()
+![alt text]()
