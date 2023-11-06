@@ -15,12 +15,19 @@
 window.addEventListener('load', function (e) {
     let id = parseInt(document.getElementsByClassName("film-poster")[0].getAttribute("data-film-id"))
 
-    getData(1, id, 'https://raw.githubusercontent.com/afchatfield/lb-list-to-json/main/top_2000_highest_rated.json')
-    getData(2, id, 'https://raw.githubusercontent.com/afchatfield/lb-list-to-json/main/top_2000_most_watched.json')
-    getData(3, id, 'https://raw.githubusercontent.com/afchatfield/lb-list-to-json/main/top_5000_all_time.json')
+    getData(1, id, 'https://raw.githubusercontent.com/afchatfield/lb-list-to-json/main/Ratings/top_2000_highest_rated.json')
+    getData(2, id, 'https://raw.githubusercontent.com/afchatfield/lb-list-to-json/main/Ratings/movies_with_100000_or_more_watched.json')
+    getData(3, id, 'https://raw.githubusercontent.com/afchatfield/lb-list-to-json/main/Ratings/top_5000_all_time.json')
+    getData(4, id, 'https://raw.githubusercontent.com/afchatfield/lb-list-to-json/main/Ratings/top_250_french_films_by_french_users.json')
+    getData(5, id, 'https://raw.githubusercontent.com/afchatfield/lb-list-to-json/main/Ratings/top_250_spanish_films_by_spanish_users.json')
+    getData(6, id, 'https://raw.githubusercontent.com/afchatfield/lb-list-to-json/main/Ratings/top_250_british_films_by_british_users.json')
+    getData(7, id, 'https://raw.githubusercontent.com/afchatfield/lb-list-to-json/main/Ratings/top_100_german_films_by_german_users.json')
+    getData(8, id, 'https://raw.githubusercontent.com/afchatfield/lb-list-to-json/main/Ratings/top_100_italian_films_by_italian_users.json')
+    getData(9, id, 'https://raw.githubusercontent.com/afchatfield/lb-list-to-json/main/Ratings/top_100_scandinavian_films_by_scandinavian_users.json')
 }, false);
 
 let getData = function (type, id, json_link) {
+    var parameters;
 	fetch(json_link)
 		.then(res => res.json())
 		.then((out) => {
@@ -30,10 +37,68 @@ let getData = function (type, id, json_link) {
 						 addCrown(i+1);
                     }
 					else if (type == 2) {
-						addFire(i+1);
+                        parameters = {
+                            list: "/el_duderinno/list/every-movie-with-more-than-100000-watched/page/",
+                            icon: "https://raw.githubusercontent.com/frozenpandaman/letterboxd-userscripts/master/top-2000-flame.svg",
+                            size: {height: "12", width: "12"}
+                        }
+                        addIcon(i+1, parameters);
                     }
-                    else {
-                        addMovie(i+1);
+                    else if (type == 3) {
+                        parameters = {
+                            list: "/prof_ratigan/list/top-5000-films-of-all-time-calculated/page/",
+                            icon: "https://raw.githubusercontent.com/afchatfield/lb-list-to-json/main/Icons/camera_icon.png",
+                            size: {height: "16", width: "16"}
+                        }
+                        addIcon(i+1, parameters);
+                    }
+                    else if (type == 4) {
+                        parameters = {
+                            list: "/el_duderinno/list/letterboxds-top-250-highest-rated-french-1/page/",
+                            icon: "https://raw.githubusercontent.com/afchatfield/lb-list-to-json/main/Icons/france.png",
+                            size: {height: "16", width: "16"}
+                        }
+                        addIcon(i+1, parameters);
+                    }
+                    else if (type == 5) {
+                        parameters = {
+                            list: "/el_duderinno/list/letterboxds-top-250-spanish-speaking-films/page/",
+                            icon: "https://raw.githubusercontent.com/afchatfield/lb-list-to-json/main/Icons/spain.png",
+                            size: {height: "16", width: "16"}
+                        }
+                        addIcon(i+1, parameters);
+                    }
+                    else if (type == 6) {
+                        parameters = {
+                            list: "/slinkyman/list/letterboxds-top-250-highest-rated-british/page/",
+                            icon: "https://raw.githubusercontent.com/afchatfield/lb-list-to-json/main/Icons/united_kingdom.png",
+                            size: {height: "16", width: "16"}
+                        }
+                        addIcon(i+1, parameters);
+                    }
+                    else if (type == 7) {
+                        parameters = {
+                            list: "/alexanderh/list/top-100-german-films-of-german-members/page/",
+                            icon: "https://raw.githubusercontent.com/afchatfield/lb-list-to-json/main/Icons/germany.png",
+                            size: {height: "16", width: "16"}
+                        }
+                        addIcon(i+1, parameters);
+                    }
+                    else if (type == 8) {
+                        parameters = {
+                            list: "/el_duderinno/list/letterboxds-top-100-italian-films-as-rated/page/",
+                            icon: "https://raw.githubusercontent.com/afchatfield/lb-list-to-json/main/Icons/italy.png",
+                            size: {height: "16", width: "16"}
+                        }
+                        addIcon(i+1, parameters);
+                    }
+                    else if (type == 9) {
+                        parameters = {
+                            list: "/el_duderinno/list/letterboxds-top-100-scandinavian-films-as/page/",
+                            icon: "https://raw.githubusercontent.com/afchatfield/lb-list-to-json/main/Icons/scandinavia.png",
+                            size: {height: "16", width: "16"}
+                        }
+                        addIcon(i+1, parameters);
                     }
 				}
 			});
@@ -45,7 +110,7 @@ let addCrown = function (ranking) {
 	var a_crown = document.createElement("a");
 	li_crown.className = "stat"
     var page = parseInt(ranking / 100) + 1;
-	a_crown.setAttribute("href", "/el_duderinno/list/letterboxds-top-2000-narrative-feature-films/page/" + String(page));
+	a_crown.setAttribute("href", "/koenie/list/letterboxds-top-2000-narrative-feature-films/page/" + String(page));
 	a_crown.className = "has-icon icon-top250 icon-16 tooltip";
 	let span = document.createElement("span");
 	span.className = "icon";
@@ -72,54 +137,17 @@ let addCrown = function (ranking) {
 	}).observe(document, {attributes: false, childList: true, characterData: false, subtree:true});
 }
 
-let addFire = function (ranking) {
-	var li_fire = document.createElement("li");
-	li_fire.className = "stat"
-	var a_fire = document.createElement("a");
-    var page = parseInt(ranking / 100) + 1;
-	a_fire.setAttribute("href", "/el_duderinno/list/top-2000-most-watched/page/" + String(page));
-	a_fire.style.fontSize = ".92307692rem"
-	let fire = document.createElement("img");
-	fire.src = "https://raw.githubusercontent.com/frozenpandaman/letterboxd-userscripts/master/top-2000-flame.svg";
-	fire.setAttribute("height", "12");
-	fire.setAttribute("width", "12");
-	fire.style.float = "left"
-	fire.style.paddingTop = "1px"
-	fire.style.marginLeft = "-1px"
-	fire.style.marginRight = "3px"
-	a_fire.appendChild(fire);
-	a_fire.appendChild(document.createTextNode(ranking));
-	li_fire.appendChild(a_fire);
-
-
-	new MutationObserver(function(mutations) {
-		for (const {addedNodes} of mutations) {
-		  for (const node of addedNodes) {
-			if (node.nodeType !== Node.ELEMENT_NODE) {
-			  continue;
-			}
-			var ul = document.getElementsByClassName("film-stats")[0];
-			if (ul.getElementsByTagName("li").length > 1) {
-				ul.appendChild(li_fire);
-				this.disconnect();
-			}
-		  }
-		}
-	}).observe(document, {attributes: false, childList: true, characterData: false, subtree:true});
-}
-
-
-let addMovie = function (ranking) {
-	var li_mov = document.createElement("li");
+let addIcon = function (ranking, parameters) {
+    var li_mov = document.createElement("li");
 	li_mov.className = "stat"
 	var a_mov = document.createElement("a");
     var page = parseInt(ranking / 100) + 1;
-	a_mov.setAttribute("href", "/prof_ratigan/list/top-5000-films-of-all-time-calculated/page/" + String(page));
+	a_mov.setAttribute("href", parameters.list + String(page));
 	a_mov.style.fontSize = ".92307692rem"
 	let movie = document.createElement("img");
-	movie.src = "https://raw.githubusercontent.com/afchatfield/lb-list-to-json/main/camera_icon.png";
-	movie.setAttribute("height", "16");
-	movie.setAttribute("width", "16");
+	movie.src = parameters.icon;
+	movie.setAttribute("height", parameters.size.height);
+	movie.setAttribute("width", parameters.size.width);
 	movie.style.float = "left"
 	movie.style.marginLeft = "-1px"
 	movie.style.marginRight = "3px"
@@ -127,8 +155,7 @@ let addMovie = function (ranking) {
 	a_mov.appendChild(document.createTextNode(ranking));
 	li_mov.appendChild(a_mov);
 
-
-	new MutationObserver(function(mutations) {
+    new MutationObserver(function(mutations) {
 		for (const {addedNodes} of mutations) {
 		  for (const node of addedNodes) {
 			if (node.nodeType !== Node.ELEMENT_NODE) {
