@@ -11,4 +11,4 @@ https://letterboxd.com/prof_ratigan/list/top-5000-films-of-all-time-calculated/
 
 Example:
 
-![alt text](https://raw.githubusercontent.com/afchatfield/lb-list-to-json/main/example.png)
+![alt text](https://raw.githubusercontent.com/afchatfield/lb-list-to-json/main/flag_example.png)
