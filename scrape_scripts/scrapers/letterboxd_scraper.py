@@ -323,10 +323,10 @@ class LetterboxdScraper(BaseScraper):
         Returns:
             List of dictionaries containing film data
         """
-        if list_key not in PREDEFINED_LISTS:
-            raise ValueError(f"Unknown predefined list: {list_key}. Available: {list(PREDEFINED_LISTS.keys())}")
+        if list_key not in self.PREDEFINED_LISTS:
+            raise ValueError(f"Unknown predefined list: {list_key}. Available: {list(self.PREDEFINED_LISTS.keys())}")
         
-        username, list_name = PREDEFINED_LISTS[list_key]
+        username, list_name = self.PREDEFINED_LISTS[list_key]
         return self.get_films_from_list(username, list_name)
 
     def get_list_pagination_info(self, username: str, list_name: str) -> dict:

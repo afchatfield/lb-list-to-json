@@ -13,7 +13,7 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 sys.path.append(parent_dir)
 
-from scrapers.letterboxd_scraper import LetterboxdScraper, get_predefined_list_soup
+from scrapers.letterboxd_scraper import LetterboxdScraper
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -70,10 +70,14 @@ def test_list_page_retrieval(scraper):
 
 
 @pytest.mark.network
-def test_predefined_list_helper():
+def test_predefined_list_helper(scraper):
     """Test predefined list helper function"""
-    predefined_soup = get_predefined_list_soup("my_top_100")
-    assert predefined_soup is not None, "Predefined list soup should not be None"
+    # Test that the scraper can get a predefined list
+    predefined_films = scraper.get_predefined_list_films("my_top_100")
+    assert predefined_films is not None, "Predefined list films should not be None"
+    assert len(predefined_films) > 0, "Predefined list should contain films"
     
-    list_title = predefined_soup.find("h1", class_="title-1")
-    assert list_title is not None, "Predefined list should have a title"
+    # Check that the first film has expected properties
+    first_film = predefined_films[0]
+    assert 'name' in first_film, "Film should have a name"
+    assert 'film_slug' in first_film, "Film should have a film_slug"

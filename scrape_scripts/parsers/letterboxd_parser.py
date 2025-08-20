@@ -88,17 +88,21 @@ class LetterboxdParser(BaseParser):
         # Validate years
         if 'year' in df.columns:
             current_year = datetime.now().year
-            invalid_years = df[
-                (df['year'] < 1800) | (df['year'] > current_year + 10)
-            ]['year'].dropna()
+            # Convert to numeric for validation
+            numeric_years = pd.to_numeric(df['year'], errors='coerce')
+            invalid_years = numeric_years[
+                (numeric_years < 1800) | (numeric_years > current_year + 10)
+            ].dropna()
             if not invalid_years.empty:
                 logger.warning(f"Found {len(invalid_years)} films with questionable years")
         
         # Validate ratings
         if 'owner_rating' in df.columns:
-            invalid_ratings = df[
-                (df['owner_rating'] < 0) | (df['owner_rating'] > 10)
-            ]['owner_rating'].dropna()
+            # Convert to numeric for validation
+            numeric_ratings = pd.to_numeric(df['owner_rating'], errors='coerce')
+            invalid_ratings = numeric_ratings[
+                (numeric_ratings < 0) | (numeric_ratings > 10)
+            ].dropna()
             if not invalid_ratings.empty:
                 logger.warning(f"Found {len(invalid_ratings)} films with invalid ratings")
     
@@ -123,12 +127,12 @@ class LetterboxdParser(BaseParser):
         
         try:
             rating = float(rating)
-            # Letterboxd uses 0-10 scale
-            if 0 <= rating <= 10:
-                return rating
-            # Convert from 5-star scale to 10-point scale
-            elif 0 <= rating <= 5:
+            # Convert from 5-star scale to 10-point scale if <= 5
+            if 0 <= rating <= 5:
                 return rating * 2
+            # If it's already in 10-point scale, validate range
+            elif 5 < rating <= 10:
+                return rating
             else:
                 return None
         except (ValueError, TypeError):
@@ -518,6 +522,8 @@ class FilmDataFrameBuilder:
         """Add computed columns to the DataFrame."""
         # Add decade column
         if 'year' in df.columns:
+            # Ensure year is numeric before computation
+            df['year'] = pd.to_numeric(df['year'], errors='coerce')
             df['decade'] = (df['year'] // 10) * 10
         
         # Add has_rating flag

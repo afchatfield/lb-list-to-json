@@ -1,0 +1,25 @@
+# Core scraping dependencies
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+selenium>=4.15.0
+
+# Data processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# CLI and utilities
+click>=8.1.0
+colorama>=0.4.6
+tqdm>=4.65.0
+
+# Testing dependencies
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-html>=3.2.0
+pytest-xdist>=3.3.0  # For parallel test execution
+
+# Development dependencies
+black>=23.7.0  # Code formatting
+flake8>=6.0.0  # Linting
+mypy>=1.5.0   # Type checking

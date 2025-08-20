@@ -1,0 +1,7 @@
+/scrape_scripts/env/
+__pycache__/
+*.pyc
+*.pyo
+scrape_scripts/output/
+.DS_Store
+*.log
