@@ -29,7 +29,9 @@ def scraper():
 @pytest.fixture(scope="session")
 def extracted_films(scraper):
     """Pytest fixture to extract films once and reuse across tests."""
-    films = scraper.get_predefined_list_films("my_top_100")
+    # Use the new approach: get predefined list info and use scraper methods directly
+    username, list_slug = scraper.PREDEFINED_LISTS["my_top_100"]
+    films = scraper.get_all_films_from_list_parallel(username, list_slug, max_workers=2)
     return films
 
 
@@ -129,8 +131,10 @@ class TestFilmExtraction:
     
     def test_error_handling_invalid_list(self, scraper):
         """Test error handling with invalid predefined list"""
-        with pytest.raises(ValueError):
-            scraper.get_predefined_list_films("non_existent_list")
+        # Test that invalid predefined list key raises appropriate error
+        with pytest.raises(KeyError):
+            invalid_key = "non_existent_list"
+            username, list_slug = scraper.PREDEFINED_LISTS[invalid_key]
 
 
 class TestFilmExtractionIntegration:
@@ -141,8 +145,9 @@ class TestFilmExtractionIntegration:
     @pytest.mark.network
     def test_complete_workflow(self, scraper):
         """Test complete workflow from list extraction to data export"""
-        # Extract a small subset
-        films = scraper.get_predefined_list_films("my_top_100")
+        # Extract a small subset using the new approach
+        username, list_slug = scraper.PREDEFINED_LISTS["my_top_100"]
+        films = scraper.get_all_films_from_list_parallel(username, list_slug, max_workers=2)
         sample_films = films[:2]  # Just 2 films for quick test
         
         # Get details for each

@@ -71,9 +71,16 @@ def test_list_page_retrieval(scraper):
 
 @pytest.mark.network
 def test_predefined_list_helper(scraper):
-    """Test predefined list helper function"""
-    # Test that the scraper can get a predefined list
-    predefined_films = scraper.get_predefined_list_films("my_top_100")
+    """Test predefined list helper function using the new CLI approach"""
+    # Test that the scraper has predefined lists configured
+    assert hasattr(scraper, 'PREDEFINED_LISTS'), "Scraper should have PREDEFINED_LISTS"
+    assert "my_top_100" in scraper.PREDEFINED_LISTS, "Should have my_top_100 predefined list"
+    
+    # Get the predefined list info
+    username, list_slug = scraper.PREDEFINED_LISTS["my_top_100"]
+    
+    # Test that we can get basic films from the predefined list
+    predefined_films = scraper.get_all_films_from_list_parallel(username, list_slug, max_workers=2)
     assert predefined_films is not None, "Predefined list films should not be None"
     assert len(predefined_films) > 0, "Predefined list should contain films"
     

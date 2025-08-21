@@ -14,6 +14,7 @@
     "title": "h1.headline-1 .name",
     "year": ".releasedate a",
     "director": ".credits .prettify",
+    "runtime": "p.text-link",
     "synopsis": ".production-synopsis .prettify p",
     "tagline": ".tagline",
     "original_title": ".originalname",
