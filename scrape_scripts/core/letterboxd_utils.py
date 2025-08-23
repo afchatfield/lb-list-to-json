@@ -5,8 +5,48 @@ Contains common functionality to reduce code duplication.
 
 import re
 import logging
+import json
+import os
 from typing import Optional, Dict, Any, List
 from bs4 import BeautifulSoup
+
+
+def load_letterboxd_selectors() -> Dict[str, Any]:
+    """
+    Load Letterboxd selectors from the JSON configuration file.
+    
+    Returns:
+        Dictionary containing all selector configurations
+    """
+    config_path = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)),
+        'configs',
+        'letterboxd_selectors.json'
+    )
+    
+    try:
+        with open(config_path, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        logging.error(f"Selectors config file not found: {config_path}")
+        return {}
+    except json.JSONDecodeError as e:
+        logging.error(f"Invalid JSON in selectors config: {e}")
+        return {}
+
+
+def get_selector_category(category: str) -> Dict[str, str]:
+    """
+    Get a specific category of selectors.
+    
+    Args:
+        category: Category name (e.g., 'film_list', 'film_page', 'pagination', 'attributes')
+    
+    Returns:
+        Dictionary of selectors for the category
+    """
+    selectors = load_letterboxd_selectors()
+    return selectors.get(category, {})
 
 
 class DataExtractor:
@@ -89,7 +129,8 @@ class FilmDataExtractor(DataExtractor):
     
     def __init__(self, selectors: Dict[str, Any] = None):
         """Initialize with selectors configuration."""
-        self.selectors = selectors or {
+        # Default selectors as fallback - these should match letterboxd_selectors.json
+        default_selectors = {
             'title': 'h1.headline-1 .name',
             'year': '.releasedate a',
             'director': '.credits .prettify',
@@ -105,6 +146,9 @@ class FilmDataExtractor(DataExtractor):
             'fans_link': 'a[href*="/fans/"]',
             'histogram_bars': '.rating-histogram-bar a'
         }
+        
+        # Use provided selectors or defaults
+        self.selectors = selectors if selectors else default_selectors
     
     def extract_basic_film_data(self, soup: BeautifulSoup) -> Dict[str, Any]:
         """Extract basic film information efficiently."""
@@ -296,14 +340,32 @@ class StatsExtractor(DataExtractor):
 class PaginationHelper:
     """Helper class for handling pagination in lists."""
     
-    @staticmethod
-    def get_pagination_info(soup: BeautifulSoup) -> Dict[str, int]:
+    def __init__(self, selectors: Dict[str, Any] = None):
+        """Initialize with selectors configuration."""
+        # Default selectors as fallback - these should match letterboxd_selectors.json
+        default_selectors = {
+            'pagination': {
+                'pagination_container': '.pagination',
+                'page_links': '.pagination li a',
+                'last_page': '.pagination li:last-child a'
+            },
+            'film_list': {
+                'poster_container': '.poster-container'
+            }
+        }
+        
+        # Use provided selectors or defaults
+        self.selectors = selectors if selectors else default_selectors
+    
+    def get_pagination_info(self, soup: BeautifulSoup) -> Dict[str, int]:
         """Extract pagination information from a list page."""
-        pagination = soup.find('div', class_='paginate-pages')
+        pagination_selector = self.selectors.get('pagination', {}).get('pagination_container', '.pagination')
+        pagination = soup.select_one(pagination_selector.replace('.pagination', 'div.paginate-pages'))
         total_pages = 1
         
         if pagination:
-            page_links = pagination.find_all('a')
+            page_links_selector = self.selectors.get('pagination', {}).get('page_links', '.pagination li a')
+            page_links = pagination.select('a')  # Use direct 'a' since we already have the pagination container
             if page_links:
                 last_page_link = page_links[-1]
                 if 'page' in last_page_link.get('href', ''):
@@ -312,8 +374,9 @@ class PaginationHelper:
                     except (ValueError, IndexError):
                         total_pages = 1
         
-        # Count films on current page
-        films_on_page = len(soup.select('.poster-container'))
+        # Count films on current page using configurable selector
+        poster_selector = self.selectors.get('film_list', {}).get('poster_container', '.poster-container')
+        films_on_page = len(soup.select(poster_selector))
         total_films_estimate = films_on_page * total_pages
         
         return {
@@ -334,22 +397,52 @@ class PaginationHelper:
 class ListFilmExtractor(DataExtractor):
     """Specialized extractor for films from list pages."""
     
+    def __init__(self, selectors: Dict[str, Any] = None):
+        """Initialize with selectors configuration."""
+        # Default selectors as fallback - these should match letterboxd_selectors.json
+        default_selectors = {
+            'film_list': {
+                'poster_container': '.poster-container',
+                'data_item_slug': 'div[data-item-slug]',
+                'data_film_slug': 'div[data-film-slug]',
+                'data_film_id': 'div[data-film-id]',
+                'film_img': 'img'
+            },
+            'attributes': {
+                'data_item_slug': 'data-item-slug',
+                'data_film_slug': 'data-film-slug',
+                'data_film_id': 'data-film-id',
+                'data_item_name': 'data-item-name',
+                'data_film_name': 'data-film-name',
+                'data_owner_rating': 'data-owner-rating',
+                'data_target_link': 'data-target-link',
+                'data_item_link': 'data-item-link',
+                'alt': 'alt'
+            }
+        }
+        
+        # Use provided selectors or defaults
+        self.selectors = selectors if selectors else default_selectors
+    
     def extract_films_from_list(self, soup: BeautifulSoup, start_position: int = 1) -> List[Dict[str, Any]]:
         """Extract film data from a list page."""
         films = []
         current_position = start_position
         
+        # Get selectors from config
+        film_list_selectors = self.selectors.get('film_list', {})
+        
         # Try multiple selectors for compatibility with different website versions
         # First try the new structure (data-item-slug)
-        film_posters = soup.select('div[data-item-slug]')
+        film_posters = soup.select(film_list_selectors.get('data_item_slug', 'div[data-item-slug]'))
         
         # Fallback to old structure (data-film-slug) 
         if not film_posters:
-            film_posters = soup.select('div[data-film-slug]')
+            film_posters = soup.select(film_list_selectors.get('data_film_slug', 'div[data-film-slug]'))
         
         # Additional fallback using data-film-id
         if not film_posters:
-            film_posters = soup.select('div[data-film-id]')
+            film_posters = soup.select(film_list_selectors.get('data_film_id', 'div[data-film-id]'))
         
         for poster in film_posters:
             try:
@@ -365,36 +458,42 @@ class ListFilmExtractor(DataExtractor):
     
     def _extract_single_film_from_poster(self, poster: BeautifulSoup, position: int) -> Optional[Dict[str, Any]]:
         """Extract data from a single film poster element."""
+        # Get attribute names from config
+        attrs = self.selectors.get('attributes', {})
+        
         # Try both new and old attribute names for film slug
-        film_slug = poster.get('data-item-slug') or poster.get('data-film-slug')
+        film_slug = (poster.get(attrs.get('data_item_slug', 'data-item-slug')) or 
+                    poster.get(attrs.get('data_film_slug', 'data-film-slug')))
         if not film_slug:
             return None
 
         # Try both new and old attribute names for film name
-        film_name = poster.get('data-item-name')
+        film_name = poster.get(attrs.get('data_item_name', 'data-item-name'))
         if not film_name:
             # Fallback to img alt attribute
-            img = poster.select_one('img')
+            img_selector = self.selectors.get('film_list', {}).get('film_img', 'img')
+            img = poster.select_one(img_selector)
             if img:
-                film_name = img.get('alt', '').strip()
+                film_name = img.get(attrs.get('alt', 'alt'), '').strip()
         
         # Additional fallback to data attributes
         if not film_name:
-            film_name = poster.get('data-film-name', 'Unknown')
+            film_name = poster.get(attrs.get('data_film_name', 'data-film-name'), 'Unknown')
 
         # Get owner rating from parent list item
         list_item = poster.find_parent('li')
         owner_rating = None
         if list_item:
-            owner_rating = list_item.get('data-owner-rating')
+            owner_rating = list_item.get(attrs.get('data_owner_rating', 'data-owner-rating'))
 
         # Try both new and old attribute names for target link
-        target_link = poster.get('data-item-link') or poster.get('data-target-link')
+        target_link = (poster.get(attrs.get('data_item_link', 'data-item-link')) or 
+                      poster.get(attrs.get('data_target_link', 'data-target-link')))
 
         return {
             'film_slug': film_slug,
             'name': film_name,
-            'film_id': poster.get('data-film-id'),
+            'film_id': poster.get(attrs.get('data_film_id', 'data-film-id')),
             'target_link': target_link,
             'list_position': str(position),
             'owner_rating': owner_rating

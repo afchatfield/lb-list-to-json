@@ -14,6 +14,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.base_session import BaseSession
 from core.base_scraper import BaseScraper
+from core.config_loader import selector_config
 from core.letterboxd_utils import (
     FilmDataExtractor, StatsExtractor, ListFilmExtractor, 
     PaginationHelper
@@ -57,22 +58,27 @@ class LetterboxdScraper(BaseScraper):
     def __init__(self):
         self.letterboxd_session = LetterboxdSession()
         
-        # Initialize base scraper first to get selectors
+        # Load selectors from centralized config
+        selectors = selector_config.get_selectors()
+        
+        # Initialize base scraper with loaded selectors
         try:
             super().__init__(
                 session=self.letterboxd_session,
                 config_name="letterboxd_selectors"
             )
         except FileNotFoundError:
-            self.selectors = {}
-            logging.warning("Letterboxd selectors config not found, using empty selectors")
+            # Use the centralized config if file loading fails
+            self.selectors = selectors
+            logging.warning("Using centralized selector config as fallback")
         
-        # Initialize utility classes with selectors
-        film_selectors = self.selectors.get('film_page', {}) if hasattr(self, 'selectors') else {}
+        # Initialize utility classes with selectors from config
+        film_selectors = selectors.get('film_page', {})
+        
         self.film_extractor = FilmDataExtractor(film_selectors)
         self.stats_extractor = StatsExtractor()
-        self.list_extractor = ListFilmExtractor()
-        self.pagination_helper = PaginationHelper()
+        self.list_extractor = ListFilmExtractor(selectors)
+        self.pagination_helper = PaginationHelper(selectors)
         
         # Initialize parallel processors
         self.parallel_processor = ParallelProcessor(

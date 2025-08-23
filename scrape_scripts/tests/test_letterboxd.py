@@ -14,6 +14,7 @@ parent_dir = os.path.dirname(current_dir)
 sys.path.append(parent_dir)
 
 from scrapers.letterboxd_scraper import LetterboxdScraper
+from core.config_loader import selector_config
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -63,17 +64,28 @@ def test_list_page_retrieval(scraper):
     list_title = list_soup.find("h1", class_="title-1")
     assert list_title is not None, "List page should have a title-1 heading"
     
-    # Check for film items - try multiple selectors for robustness
-    film_items = list_soup.find_all("li", class_="poster-container")
+    # Check for film items - use selectors from config
+    selectors = selector_config.get_film_list_selectors()
     
-    # If the primary selector doesn't work, try alternatives
+    # Try the main poster container selector first
+    poster_selector = selectors.get('poster_container', '.poster-container')
+    film_items = list_soup.select(f"li{poster_selector}")
+    
+    # If the primary selector doesn't work, try alternatives from config
     if len(film_items) == 0:
-        # Try other possible selectors
-        film_items = list_soup.find_all("div", attrs={"data-item-slug": True})
+        # Try data-item-slug selector
+        data_slug_selector = selectors.get('data_item_slug', 'div[data-item-slug]')
+        film_items = list_soup.select(data_slug_selector)
+        
         if len(film_items) == 0:
-            film_items = list_soup.find_all("div", attrs={"data-film-slug": True})
+            # Try data-film-slug selector
+            film_slug_selector = selectors.get('data_film_slug', 'div[data-film-slug]')
+            film_items = list_soup.select(film_slug_selector)
+            
         if len(film_items) == 0:
-            film_items = list_soup.find_all("div", attrs={"data-film-id": True})
+            # Try data-film-id selector
+            film_id_selector = selectors.get('data_film_id', 'div[data-film-id]')
+            film_items = list_soup.select(film_id_selector)
     
     assert len(film_items) > 0, f"List should contain film items. Found {len(film_items)} with available selectors"
     assert len(film_items) <= 100, "List should not exceed 100 items"
