@@ -83,6 +83,9 @@ class TestFilmExtraction:
         assert isinstance(film_details.get('cast', []), list), "Cast should be a list"
         assert isinstance(film_details.get('genres', []), list), "Genres should be a list"
         assert isinstance(film_details.get('countries', []), list), "Countries should be a list"
+        assert isinstance(film_details.get('primary_language', ''), str), "Primary language should be a string"
+        assert isinstance(film_details.get('other_languages', []), list), "Other languages should be a list"
+        assert isinstance(film_details.get('studios', []), list), "Studios should be a list"
     
     @pytest.mark.network
     @pytest.mark.slow

@@ -6,8 +6,9 @@ Provides common functionality for data cleaning and transformation.
 import pandas as pd
 import re
 import logging
-from typing import Dict, List, Any, Optional, Callable
+from typing import Dict, List, Any, Optional, Callable, Union
 from abc import ABC, abstractmethod
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -110,8 +111,15 @@ class BaseParser(ABC):
         
         return text
     
-    def _clean_year(self, year: str) -> Optional[int]:
-        """Extract and validate year from text."""
+    def _clean_year(self, year: Union[str, int]) -> Optional[int]:
+        """Extract and validate year from text or integer."""
+        # If already an integer, validate it's a reasonable year
+        if isinstance(year, int):
+            current_year = datetime.now().year
+            if 1800 <= year <= current_year + 10:
+                return year
+            return None
+        
         if not isinstance(year, str):
             return None
         

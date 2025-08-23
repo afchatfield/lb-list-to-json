@@ -90,8 +90,11 @@ class ParallelProcessor:
                 try:
                     detailed_film = future.result()
                     if detailed_film:
-                        detailed_film.update(original_film)
-                        detailed_films.append(detailed_film)
+                        # Start with original film data, then update with detailed data
+                        # This preserves list-specific fields while adding detailed film info
+                        merged_film = original_film.copy()
+                        merged_film.update(detailed_film)
+                        detailed_films.append(merged_film)
                     else:
                         detailed_films.append(original_film)
                         

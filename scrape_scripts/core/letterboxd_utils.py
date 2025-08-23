@@ -95,6 +95,9 @@ class FilmDataExtractor(DataExtractor):
             'director': '.credits .prettify',
             'genres': '#tab-genres .text-slug',
             'countries': '#tab-details .text-sluglist a[href*="/films/country/"]',
+            'primary_language': "#tab-details .text-sluglist a[href*='/films/language/']:first-of-type",
+            'other_languages': "#tab-details .text-sluglist a[href*='/films/language/']",
+            'studios': '#tab-details .text-sluglist a[href*="/studio/"]',
             'cast': '.cast-list .text-slug',
             'runtime': 'p.text-link',
             'rating_section': 'section.ratings-histogram-chart',
@@ -119,9 +122,23 @@ class FilmDataExtractor(DataExtractor):
         director = self.extract_text(soup, self.selectors['director'])
         film_data['director'] = director
         
-        # Lists (limited for performance)
-        film_data['genres'] = self.extract_text_list(soup, self.selectors['genres'])
+        # Extract and separate genres from themes
+        all_genres = self.extract_text_list(soup, self.selectors['genres'])
+        genres, themes = self._separate_genres_and_themes(all_genres)
+        film_data['genres'] = genres
+        film_data['themes'] = themes
         film_data['countries'] = self.extract_text_list(soup, self.selectors['countries'])
+
+        primary_language = self.extract_text(soup, self.selectors.get('primary_language', ''))
+        other_languages = self.extract_text_list(soup, self.selectors.get('other_languages', ''))
+        
+        film_data['primary_language'] = primary_language
+        if primary_language and other_languages:
+            film_data['other_languages'] = [lang for lang in other_languages if lang != primary_language]
+        else:
+            film_data['other_languages'] = other_languages
+        
+        film_data['studios'] = self.extract_text_list(soup, self.selectors.get('studios', ''))
         film_data['cast'] = self.extract_text_list(soup, self.selectors['cast'])[:10]  # Limit for speed
         
         # Runtime
@@ -197,6 +214,31 @@ class FilmDataExtractor(DataExtractor):
                     }
         
         return breakdown
+
+    def _separate_genres_and_themes(self, all_genres: List[str]) -> tuple[List[str], List[str]]:
+        """Separate basic genres from thematic descriptions."""
+        # Standard Letterboxd genres (basic film categories)
+        BASIC_GENRES = {
+            'Action', 'Adventure', 'Animation', 'Comedy', 'Crime', 'Documentary', 
+            'Drama', 'Family', 'Fantasy', 'History', 'Horror', 'Music', 'Mystery', 
+            'Romance', 'Science Fiction', 'Thriller', 'TV Movie', 'War', 'Western'
+        }
+        
+        genres = []
+        themes = []
+        
+        for item in all_genres:
+            # Skip "Show All…" entries
+            if item.startswith('Show All'):
+                continue
+                
+            # Check if it's a basic genre (case-insensitive)
+            if any(item.lower() == genre.lower() for genre in BASIC_GENRES):
+                genres.append(item)
+            else:
+                themes.append(item)
+        
+        return genres, themes
 
 
 class StatsExtractor(DataExtractor):
@@ -297,8 +339,17 @@ class ListFilmExtractor(DataExtractor):
         films = []
         current_position = start_position
         
-        # Use optimized selector
-        film_posters = soup.select('div[data-film-slug]')
+        # Try multiple selectors for compatibility with different website versions
+        # First try the new structure (data-item-slug)
+        film_posters = soup.select('div[data-item-slug]')
+        
+        # Fallback to old structure (data-film-slug) 
+        if not film_posters:
+            film_posters = soup.select('div[data-film-slug]')
+        
+        # Additional fallback using data-film-id
+        if not film_posters:
+            film_posters = soup.select('div[data-film-id]')
         
         for poster in film_posters:
             try:
@@ -314,31 +365,37 @@ class ListFilmExtractor(DataExtractor):
     
     def _extract_single_film_from_poster(self, poster: BeautifulSoup, position: int) -> Optional[Dict[str, Any]]:
         """Extract data from a single film poster element."""
-        film_slug = poster.get('data-film-slug')
+        # Try both new and old attribute names for film slug
+        film_slug = poster.get('data-item-slug') or poster.get('data-film-slug')
         if not film_slug:
             return None
+
+        # Try both new and old attribute names for film name
+        film_name = poster.get('data-item-name')
+        if not film_name:
+            # Fallback to img alt attribute
+            img = poster.select_one('img')
+            if img:
+                film_name = img.get('alt', '').strip()
         
-        # Get film name from img alt
-        img = poster.select_one('img')
-        film_name = None
-        if img:
-            film_name = img.get('alt', '').strip()
-        
-        # Fallback to data attributes
+        # Additional fallback to data attributes
         if not film_name:
             film_name = poster.get('data-film-name', 'Unknown')
-        
+
         # Get owner rating from parent list item
         list_item = poster.find_parent('li')
         owner_rating = None
         if list_item:
             owner_rating = list_item.get('data-owner-rating')
-        
+
+        # Try both new and old attribute names for target link
+        target_link = poster.get('data-item-link') or poster.get('data-target-link')
+
         return {
             'film_slug': film_slug,
             'name': film_name,
             'film_id': poster.get('data-film-id'),
-            'target_link': poster.get('data-target-link'),
+            'target_link': target_link,
             'list_position': str(position),
             'owner_rating': owner_rating
         }

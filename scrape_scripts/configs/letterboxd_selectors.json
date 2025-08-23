@@ -21,7 +21,8 @@
     "cast": ".cast-list .text-slug",
     "genres": "#tab-genres .text-slug",
     "countries": "#tab-details .text-sluglist a[href*='/films/country/']",
-    "languages": "#tab-details .text-sluglist a[href*='/films/language/']",
+    "primary_language": "#tab-details .text-sluglist a[href*='/films/language/']:first-of-type",
+    "other_languages": "#tab-details .text-sluglist a[href*='/films/language/']",
     "studios": "#tab-details .text-sluglist a[href*='/studio/']"
   },
   "pagination": {

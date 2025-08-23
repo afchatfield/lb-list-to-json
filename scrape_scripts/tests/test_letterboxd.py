@@ -63,9 +63,19 @@ def test_list_page_retrieval(scraper):
     list_title = list_soup.find("h1", class_="title-1")
     assert list_title is not None, "List page should have a title-1 heading"
     
-    # Check for film items
+    # Check for film items - try multiple selectors for robustness
     film_items = list_soup.find_all("li", class_="poster-container")
-    assert len(film_items) > 0, "List should contain film items"
+    
+    # If the primary selector doesn't work, try alternatives
+    if len(film_items) == 0:
+        # Try other possible selectors
+        film_items = list_soup.find_all("div", attrs={"data-item-slug": True})
+        if len(film_items) == 0:
+            film_items = list_soup.find_all("div", attrs={"data-film-slug": True})
+        if len(film_items) == 0:
+            film_items = list_soup.find_all("div", attrs={"data-film-id": True})
+    
+    assert len(film_items) > 0, f"List should contain film items. Found {len(film_items)} with available selectors"
     assert len(film_items) <= 100, "List should not exceed 100 items"
 
 

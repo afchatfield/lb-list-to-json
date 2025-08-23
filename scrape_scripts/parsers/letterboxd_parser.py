@@ -35,6 +35,8 @@ class LetterboxdParser(BaseParser):
             'genre_list': self._clean_genre_list,
             'cast_list': self._clean_cast_list,
             'country_list': self._clean_country_list,
+            'language_list': self._clean_language_list,
+            'primary_language': self._clean_primary_language,
             'film_id': self._clean_film_id,
             'list_position': self._clean_list_position,
             'stat_count': self._clean_stat_count,
@@ -58,8 +60,12 @@ class LetterboxdParser(BaseParser):
             'owner_rating': 'rating',
             'runtime': 'runtime',
             'genres': 'genre_list',
+            'themes': 'genre_list',  # Use same cleaner as genres for themes
             'cast': 'cast_list',
             'countries': 'country_list',
+            'studios': 'cast_list',  # Use same cleaner as cast for studios
+            'primary_language': 'text',
+            'other_languages': 'language_list',
             # New ratings and stats fields
             'average_rating': 'rating',
             'total_ratings': 'stat_count',
@@ -138,9 +144,16 @@ class LetterboxdParser(BaseParser):
         except (ValueError, TypeError):
             return None
     
-    def _clean_runtime(self, runtime: str) -> Optional[int]:
-        """Extract runtime in minutes from text."""
-        if not isinstance(runtime, str) or not runtime:
+    def _clean_runtime(self, runtime: Union[str, int]) -> Optional[int]:
+        """Extract runtime in minutes from text or preserve integer."""
+        if pd.isna(runtime) or runtime == '':
+            return None
+        
+        # If already an integer, return it directly
+        if isinstance(runtime, (int, float)):
+            return int(runtime) if runtime > 0 else None
+        
+        if not isinstance(runtime, str):
             return None
         
         # Look for patterns like "120 mins", "2h 30m", etc.
@@ -230,6 +243,33 @@ class LetterboxdParser(BaseParser):
         
         return cleaned_countries
     
+    def _clean_language_list(self, languages: Union[str, List[str]]) -> List[str]:
+        """Clean and standardize language list, removing duplicates."""
+        if isinstance(languages, str):
+            if not languages or languages == 'N/A':
+                return []
+            
+            # Split by common delimiters
+            languages = re.split(r'[,;]', languages)
+        
+        if not isinstance(languages, list):
+            return []
+        
+        seen = set()
+        cleaned_languages = []
+        for language in languages:
+            if isinstance(language, str):
+                language = language.strip()
+                if language and language != 'N/A' and language not in seen:
+                    cleaned_languages.append(language)
+                    seen.add(language)
+        
+        return cleaned_languages
+
+    def _clean_primary_language(self, language: str) -> str:
+        """Clean the primary language field."""
+        return self._clean_text(language)
+
     def _clean_film_id(self, film_id: Union[str, int]) -> Optional[int]:
         """Clean and validate film ID."""
         if pd.isna(film_id) or film_id == '':
@@ -550,7 +590,7 @@ class FilmDataFrameBuilder:
         preferred_order = [
             'list_position', 'name', 'title', 'year', 'decade',
             'director', 'owner_rating', 'has_rating',
-            'countries', 'genres', 'genre_count',
+            'countries', 'languages', 'genres', 'genre_count',
             'cast', 'cast_count', 'runtime',
             'film_id', 'film_slug', 'target_link',
             'original_title', 'tagline', 'synopsis'

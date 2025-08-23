@@ -10,6 +10,7 @@ import logging
 import os
 import sys
 import subprocess
+import csv
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 import pandas as pd
@@ -28,6 +29,7 @@ from parsers.letterboxd_parser import (
     LetterboxdParser, FilmDataFrameBuilder, 
     create_letterboxd_dataframe, create_summary_dataframe, create_genre_analysis_dataframe
 )
+from list_creators import ListCreator, ListConfig, SortBy
 
 # Set up logging - initially just to file, console will be configured based on flags
 logging.basicConfig(
@@ -52,6 +54,14 @@ def cli(ctx, debug, verbose, log_file):
     
     Hierarchical OOP framework for efficient Letterboxd scraping with JSON requests,
     Selenium capabilities, and comprehensive testing.
+    
+    Main Commands:
+    - scrape: Extract data from Letterboxd lists and films
+    - create: Generate new lists from existing data
+    - data: Analyze and process film data
+    - batch-lists: Create multiple lists automatically using predefined configurations
+    - info: Display framework information
+    - logs: View recent framework logs
     """
     ctx.ensure_object(dict)
     
@@ -399,6 +409,300 @@ def list_ratings(ctx, username, list_slug, output_dir, format, filename, paralle
         sys.exit(1)
     finally:
         CLIHelper.cleanup_temp_verbose_logging(temp_verbose)
+
+
+@cli.group()
+def create():
+    """📂 Commands to create new lists from existing data."""
+    pass
+
+
+@create.command(name='list-from-files')
+@click.option('--file', '-f', 'json_files', required=True, multiple=True, 
+              help='Path to a JSON data file. Use this option multiple times to provide multiple files (e.g., film lists, stats dictionaries).')
+@click.option('--output-file', '-o', required=True, help='Path to save the generated list (without extension for both formats).')
+@click.option('--format', type=click.Choice(['json', 'csv', 'both']), default='both', 
+              help='Output format: json (structured), csv (films only), or both.')
+@click.option('--title', help='Title for the list.')
+@click.option('--description', default="", help='Description for the list.')
+@click.option('--limit', type=int, default=None, help='Number of films to include in the list. No limit by default.')
+@click.option('--sort-by', type=click.Choice([e.value for e in SortBy]), default=SortBy.AVERAGE_RATING.value,
+              help='Field to sort the list by.')
+@click.option('--sort-ascending', is_flag=True, help='Sort in ascending order instead of descending.')
+@click.option('--countries', help='Comma-separated list of countries to filter by (e.g., "Japan,South Korea").')
+@click.option('--languages', help='Comma-separated list of languages to filter by (e.g., "Japanese,Korean").')
+@click.option('--include-secondary-languages', is_flag=True, help='Include secondary languages in the language filter.')
+@click.option('--genres', help='Comma-separated list of genres to filter by.')
+@click.option('--min-year', type=int, help='Minimum release year to include.')
+@click.option('--max-year', type=int, help='Maximum release year to include.')
+@click.option('--min-runtime', type=int, help='Minimum runtime in minutes.')
+@click.option('--max-runtime', type=int, help='Maximum runtime in minutes.')
+@click.option('--min-rating', type=float, help='Minimum average rating.')
+@click.option('--max-rating', type=float, help='Maximum average rating.')
+@click.option('--cutoff', type=click.Choice(['ratings', 'watches']), help='Apply minimum cutoff based on ratings count or watches count.')
+@click.option('--cutoff-limit', type=int, help='Minimum number of ratings/watches required (required when --cutoff is used).')
+@click.option('--simple-json', is_flag=True, default=False, help='Output a simple JSON array of film IDs and names.')
+def list_from_files(json_files, output_file, format, title, description, limit, sort_by, sort_ascending,
+                    countries, languages, include_secondary_languages, genres,
+                    min_year, max_year, min_runtime, max_runtime, min_rating, max_rating, cutoff, cutoff_limit, simple_json):
+    """
+    Generate a custom film list from existing JSON data files.
+
+    This command merges data from multiple JSON files, filters and sorts them based
+    on the provided criteria, and saves the result as a new list.
+
+    Example:
+    
+    python scrape_scripts/main.py create list-from-files \\
+      --file "path/to/film_details.json" \\
+      --file "path/to/film_ratings.json" \\
+      --output-file "output/my_custom_list" \\
+      --format "both" \\
+      --title "My Awesome Film List" \\
+      --limit 100 \\
+      --sort-by "average_rating" \\
+      --countries "USA,UK" \\
+      --cutoff "ratings" \\
+      --cutoff-limit 2000
+    """
+    try:
+        click.echo(f"🛠️  Creating list '{title}'...")
+        
+        # Validate cutoff parameters
+        if cutoff and cutoff_limit is None:
+            click.echo("❌ Error: --cutoff-limit is required when --cutoff is specified", err=True)
+            sys.exit(1)
+        if cutoff_limit is not None and not cutoff:
+            click.echo("❌ Error: --cutoff must be specified when --cutoff-limit is provided", err=True)
+            sys.exit(1)
+        
+        # 1. Initialize ListCreator with the provided files
+        list_creator = ListCreator(json_files=list(json_files))
+        
+        # 2. Parse comma-separated filter strings into lists
+        countries_list = countries.split(',') if countries else None
+        languages_list = languages.split(',') if languages else None
+        genres_list = genres.split(',') if genres else None
+        
+        # 3. Define the configuration for the list with all filter parameters
+        config = ListConfig(
+            title=title,
+            description=description,
+            limit=limit,
+            sort_by=SortBy(sort_by),
+            sort_ascending=sort_ascending,
+            countries=countries_list,
+            languages=languages_list,
+            include_secondary_languages=include_secondary_languages,
+            genres=genres_list,
+            min_year=min_year,
+            max_year=max_year,
+            min_runtime=min_runtime,
+            max_runtime=max_runtime,
+            min_rating=min_rating,
+            max_rating=max_rating,
+            cutoff_type=cutoff,
+            cutoff_limit=cutoff_limit
+        )
+        
+        # 4. Generate the list using the provided criteria
+        generated_list = list_creator.create_list(
+            config=config,
+            output_path=Path(output_file).with_suffix('.json'),
+            output_format='json',
+            simple_json=simple_json
+        )
+        
+        # 5. Extract just the films list for CSV output
+        if isinstance(generated_list, dict):
+            films_list = generated_list['films']
+            total_found = generated_list['total_found']
+            films_returned = generated_list['films_returned']
+        else:
+            films_list = generated_list
+            total_found = None
+            films_returned = len(films_list)
+        
+        # 6. Save files based on format preference
+        output_path = Path(output_file)
+        files_created = []
+        
+        def save_csv(file_path, films_data):
+            """Save films data as CSV"""
+            if not films_data:
+                return
+            
+            with open(file_path, 'w', newline='', encoding='utf-8') as csvfile:
+                fieldnames = films_data[0].keys()
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(films_data)
+        
+        if format in ['json', 'both']:
+            json_file = output_path.with_suffix('.json')
+            with open(json_file, 'w', encoding='utf-8') as f:
+                json.dump(generated_list, f, indent=2, ensure_ascii=False)
+            files_created.append(str(json_file))
+        
+        if format in ['csv', 'both']:
+            csv_file = output_path.with_suffix('.csv')
+            save_csv(csv_file, films_list)
+            files_created.append(str(csv_file))
+        
+        if simple_json:
+            simple_json_file = output_path.with_suffix('.simple.json')
+            simple_data = [{"id": film.get("film_id") or film.get("id"), "name": film.get("name")} for film in films_list]
+            with open(simple_json_file, 'w', encoding='utf-8') as f:
+                json.dump(simple_data, f, indent=2, ensure_ascii=False)
+            files_created.append(str(simple_json_file))
+        
+        # 7. Show completion message
+        click.echo(f"✅ List saved to: {', '.join(files_created)}")
+        
+        # Only show summary if we have metadata or it's relevant
+        if total_found is not None:
+            click.echo(f"📊 Found {total_found} films, returned {films_returned}")
+        else:
+            click.echo(f"📊 Generated list with {films_returned} films")
+
+    except ValueError as e:
+        click.echo(f"❌ Configuration Error: {e}", err=True)
+        sys.exit(1)
+    except Exception as e:
+        click.echo(f"❌ An unexpected error occurred: {e}", err=True)
+        logger.exception("An unexpected error occurred in create-list command")
+        sys.exit(1)
+
+
+@cli.command(name='batch-lists')
+@click.option('--config', default='configs/batch_configurations.json', help='Path to batch configuration file.')
+@click.option('--input-files', '-i', 'input_files_paths', multiple=True, help='Paths to input JSON data files. If not provided, finds newest files in output folder.')
+@click.option('--output-dir', default='output/batch_lists', help='Output directory for the generated lists.')
+@click.option('--simple-json/--no-simple-json', default=True, help='Also generate a simple JSON array of films with id and name, in order (default: enabled).')
+@click.pass_context
+def batch_lists(ctx, config, input_files_paths, output_dir, simple_json):
+    """
+    Create multiple lists from a batch configuration file.
+    
+    Iterates over a JSON configuration file, running the list creation 
+    process for each item.
+    """
+    click.echo("🚀 Starting batch list creation...")
+    
+    # Ensure output directory exists
+    output_path = Path(output_dir)
+    output_path.mkdir(exist_ok=True)
+    
+    # 1. Determine input files
+    if input_files_paths:
+        files_to_use = list(input_files_paths)
+        click.echo(f"ℹ️ Using provided input files: {files_to_use}")
+    else:
+        try:
+            output_folder = Path('output')
+            
+            def find_latest_file(pattern):
+                files = list(output_folder.glob(pattern))
+                if not files: return None
+                return max(files, key=lambda f: f.stat().st_mtime)
+
+            detailed_file = find_latest_file('all_the_films_detailed*.json')
+            ratings_file = find_latest_file('all_the_films_ratings_stats*.json')
+            
+            files_to_use = []
+            if detailed_file: files_to_use.append(str(detailed_file))
+            if ratings_file: files_to_use.append(str(ratings_file))
+            
+            if not files_to_use:
+                click.echo("❌ Error: No input files provided and couldn't find default files in 'output/' folder.", err=True)
+                sys.exit(1)
+            click.echo(f"ℹ️ Found latest input files: {files_to_use}")
+        except Exception as e:
+            click.echo(f"❌ Error finding input files: {e}", err=True)
+            sys.exit(1)
+
+    # 2. Load batch configurations
+    try:
+        with open(config, 'r', encoding='utf-8') as f:
+            batch_config = json.load(f)
+        configurations = batch_config.get('configurations', [])
+        if not configurations:
+            click.echo("⚠️ No configurations found in the file.", err=True)
+            return
+    except FileNotFoundError:
+        click.echo(f"❌ Error: Configuration file not found at '{config}'", err=True)
+        sys.exit(1)
+    except json.JSONDecodeError:
+        click.echo(f"❌ Error: Could not decode JSON from '{config}'", err=True)
+        sys.exit(1)
+
+    # 3. Process each configuration
+    failed_lists = []
+    successful_lists = 0
+    
+    with tqdm(total=len(configurations), desc="Processing lists") as pbar:
+        for i, list_config in enumerate(configurations):
+            list_name = list_config.get('name', f"list_{i+1}")
+            pbar.set_description(f"Processing '{list_name}'")
+            
+            try:
+                # Prepare arguments for list_from_files
+                args = {
+                    'json_files': files_to_use,
+                    'output_file': str(output_path / list_config.get('output_filename', list_name)),
+                    'format': 'both',
+                    'title': list_config.get('title'),
+                    'description': list_config.get('description', ""),
+                    'limit': list_config.get('limit'),
+                    'sort_by': list_config.get('sort_by', 'average_rating'),
+                    'sort_ascending': list_config.get('sort_ascending', False),
+                    'countries': ','.join(list_config['countries']) if 'countries' in list_config else None,
+                    'languages': ','.join(list_config['languages']) if 'languages' in list_config else None,
+                    'include_secondary_languages': list_config.get('include_secondary_languages', False),
+                    'genres': ','.join(list_config['genres']) if 'genres' in list_config else None,
+                    'min_year': list_config.get('min_year'),
+                    'max_year': list_config.get('max_year'),
+                    'min_runtime': list_config.get('min_runtime'),
+                    'max_runtime': list_config.get('max_runtime'),
+                    'min_rating': list_config.get('min_rating'),
+                    'max_rating': list_config.get('max_rating'),
+                    'cutoff': list_config.get('cutoff'),
+                    'cutoff_limit': list_config.get('cutoff_limit'),
+                    'simple_json': simple_json
+                }
+                
+                # Remove None values so defaults in list_from_files are used
+                args = {k: v for k, v in args.items() if v is not None}
+
+                # Use invoke to call the command
+                ctx.invoke(list_from_files, **args)
+                successful_lists += 1
+
+            except Exception as e:
+                error_msg = f"Failed to create list '{list_name}': {e}"
+                click.echo(f"\n❌ {error_msg}", err=True)
+                
+                # Try to identify the problematic argument
+                problem_arg = "Unknown"
+                if isinstance(e, (KeyError, TypeError)):
+                    problem_arg = f"Likely a missing or malformed parameter in config for '{list_name}'"
+                
+                failed_lists.append({'name': list_name, 'reason': str(e), 'problem_arg': problem_arg})
+            
+            pbar.update(1)
+
+    # 4. Final summary
+    click.echo("\n" + "="*50)
+    click.echo("✅ Batch processing complete.")
+    click.echo(f"  - Successfully created: {successful_lists} lists")
+    click.echo(f"  - Failed: {len(failed_lists)} lists")
+
+    if failed_lists:
+        click.echo("\n❌ Failed Lists Summary:")
+        for failed in failed_lists:
+            click.echo(f"  - Name: {failed['name']}")
+            click.echo(f"    Reason: {failed['reason']}")
+            click.echo(f"    Possible Cause: {failed['problem_arg']}")
 
 
 @cli.group()
@@ -801,6 +1105,168 @@ def combine(input_files, output, clean):
         
     except Exception as e:
         click.echo(f"❌ Error combining files: {e}", err=True)
+        sys.exit(1)
+
+
+@data.command()
+@click.argument('input_files', nargs=-1, required=True)
+@click.option('--country', help='Filter by country (e.g. france)')
+@click.option('--language', help='Filter by language (e.g. french)')
+@click.option('--top', default=100, help='Number of films to return (default: 100)')
+@click.option('--sort-by', type=click.Choice(['average_rating', 'release_year', 'runtime', 'name']), 
+              default='average_rating', help='Field to sort by (default: average_rating)')
+@click.option('--output', '-o', default=None, help='Output JSON file path')
+@click.option('--show-stats', is_flag=True, help='Show dataset statistics')
+def create_list(input_files, country, language, top, sort_by, output, show_stats):
+    """
+    Create a custom list of top films from specific countries and/or languages.
+    
+    INPUT_FILES: Paths to JSON files containing film data
+    
+    Examples:
+    python main.py data create-list *.json --country france --top 250 --language french
+    python main.py data create-list file.json --country usa --sort-by release_year
+    """
+    try:
+        click.echo(f"🎬 Creating filtered list from {len(input_files)} files...")
+        
+        # Convert sort_by string to enum
+        sort_enum = SortBy(sort_by)
+        
+        # Create the list
+        creator = ListCreator(input_files)
+        
+        # Show statistics if requested
+        if show_stats:
+            stats = creator.get_statistics()
+            click.echo("\n📊 Dataset Statistics:")
+            click.echo("=" * 40)
+            click.echo(f"Total films: {stats['total_films']}")
+            click.echo(f"Films with ratings: {stats['films_with_ratings']}")
+            if stats['year_range']['min']:
+                click.echo(f"Year range: {stats['year_range']['min']}-{stats['year_range']['max']}")
+            if stats['rating_range']['average']:
+                click.echo(f"Average rating: {stats['rating_range']['average']:.2f}")
+            click.echo(f"Countries available: {stats['unique_countries']}")
+            click.echo(f"Languages available: {stats['unique_languages']}")
+            
+            # Show available countries and languages if no filters specified
+            if not country and not language:
+                available_countries = creator.get_available_countries()[:20]  # Show first 20
+                click.echo(f"\n🌍 Available countries (first 20): {', '.join(available_countries)}")
+                available_languages = creator.get_available_languages()[:20]  # Show first 20
+                click.echo(f"🗣️  Available languages (first 20): {', '.join(available_languages)}")
+                click.echo("\nUse --country and/or --language to filter")
+                return
+        
+        # Create the list
+        countries = [country] if country else None
+        languages = [language] if language else None
+        
+        result = creator.create_country_language_list(
+            limit=top,
+            countries=countries,
+            languages=languages,
+            sort_by=sort_enum
+        )
+        
+        # Display results
+        click.echo(f"\n🎯 {result['title']}")
+        click.echo(f"📝 {result['description']}")
+        click.echo(f"📊 Found {result['total_found']} matching films, returning top {result['films_returned']}")
+        
+        # Show top films
+        click.echo(f"\n🏆 Top Films:")
+        click.echo("-" * 60)
+        for i, film in enumerate(result['films'][:10], 1):
+            rating = f"⭐ {film.get('average_rating', 'N/A')}" if film.get('average_rating') else ""
+            year = f"({film.get('release_year', 'N/A')})" if film.get('release_year') else ""
+            countries_str = f"[{', '.join(film.get('countries', [])[:2])}]" if film.get('countries') else ""
+            click.echo(f"{i:2}. {film['name']} {year} {countries_str} {rating}")
+        
+        if len(result['films']) > 10:
+            click.echo(f"    ... and {len(result['films']) - 10} more films")
+        
+        # Save if output specified
+        if output:
+            with open(output, 'w', encoding='utf-8') as f:
+                json.dump(result, f, indent=2, ensure_ascii=False)
+            click.echo(f"\n💾 List saved to: {output}")
+        
+    except Exception as e:
+        click.echo(f"❌ Error creating list: {e}", err=True)
+        sys.exit(1)
+
+
+
+
+
+
+
+
+
+@data.command()
+@click.argument('input_files', nargs=-1, required=True)
+def dataset_info(input_files):
+    """
+    Show detailed information about the film dataset.
+    
+    INPUT_FILES: Paths to JSON files containing film data
+    """
+    try:
+        click.echo(f"📊 Analyzing dataset from {len(input_files)} files...")
+        
+        creator = ListCreator(input_files)
+        stats = creator.get_statistics()
+        
+        click.echo("\n🎬 Dataset Overview:")
+        click.echo("=" * 50)
+        click.echo(f"Total films: {stats['total_films']:,}")
+        click.echo(f"Films with ratings: {stats['films_with_ratings']:,}")
+        click.echo(f"Films with years: {stats['films_with_years']:,}")
+        click.echo(f"Films with runtime: {stats['films_with_runtime']:,}")
+        
+        if stats['year_range']['min']:
+            click.echo(f"\n📅 Year Range:")
+            click.echo(f"Earliest film: {stats['year_range']['min']}")
+            click.echo(f"Latest film: {stats['year_range']['max']}")
+            click.echo(f"Span: {stats['year_range']['max'] - stats['year_range']['min']} years")
+        
+        if stats['rating_range']['average']:
+            click.echo(f"\n⭐ Ratings:")
+            click.echo(f"Lowest rating: {stats['rating_range']['min']:.1f}")
+            click.echo(f"Highest rating: {stats['rating_range']['max']:.1f}")
+            click.echo(f"Average rating: {stats['rating_range']['average']:.2f}")
+        
+        if stats['runtime_range']['average']:
+            click.echo(f"\n⏱️  Runtime:")
+            click.echo(f"Shortest film: {stats['runtime_range']['min']} minutes")
+            click.echo(f"Longest film: {stats['runtime_range']['max']} minutes")
+            click.echo(f"Average runtime: {stats['runtime_range']['average']:.1f} minutes")
+        
+        click.echo(f"\n🌍 Geographic Data:")
+        click.echo(f"Unique countries: {stats['unique_countries']}")
+        click.echo(f"Unique languages: {stats['unique_languages']}")
+        
+        click.echo(f"\n🎭 Content Data:")
+        click.echo(f"Unique genres: {stats['unique_genres']}")
+        
+        # Show top countries, languages, and genres
+        countries = creator.get_available_countries()[:10]
+        languages = creator.get_available_languages()[:10]
+        genres = creator.get_available_genres()[:10]
+        
+        if countries:
+            click.echo(f"\n🌍 Top Countries: {', '.join(countries)}")
+        if languages:
+            click.echo(f"🗣️  Top Languages: {', '.join(languages)}")
+        if genres:
+            click.echo(f"🎭 Top Genres: {', '.join(genres)}")
+        
+        click.echo(f"\n💡 Use other commands to create filtered lists from this data!")
+        
+    except Exception as e:
+        click.echo(f"❌ Error analyzing dataset: {e}", err=True)
         sys.exit(1)
 
 
