@@ -1270,5 +1270,73 @@ def dataset_info(input_files):
         sys.exit(1)
 
 
+@data.command()
+@click.argument('csv_file')
+@click.option('--output', '-o', default=None, help='Output JSON file path (default: same name as CSV with .simple.json extension)')
+def csv_to_simple_json(csv_file, output):
+    """
+    Convert a CSV file from batch lists to simple JSON format.
+    
+    Creates a simple JSON array with film id and name in the same order as the CSV.
+    Format: [{"id": 74748, "name": "Film name"}, ...]
+    
+    CSV_FILE: Path to the CSV file to convert
+    
+    Example:
+    python main.py data csv-to-simple-json output/batch_lists/top_100_korean_films.csv
+    """
+    try:
+        csv_path = Path(csv_file)
+        
+        if not csv_path.exists():
+            click.echo(f"❌ Error: CSV file not found: {csv_file}", err=True)
+            sys.exit(1)
+        
+        # Determine output path
+        if output:
+            output_path = Path(output)
+        else:
+            output_path = csv_path.with_suffix('.simple.json')
+        
+        click.echo(f"🔄 Converting {csv_path.name} to simple JSON...")
+        
+        # Read CSV file
+        df = pd.read_csv(csv_path)
+        
+        # Check if required columns exist
+        if 'film_id' not in df.columns or 'name' not in df.columns:
+            click.echo(f"❌ Error: CSV must contain 'film_id' and 'name' columns", err=True)
+            click.echo(f"Available columns: {', '.join(df.columns.tolist())}", err=True)
+            sys.exit(1)
+        
+        # Create simple JSON data in the same order as CSV
+        simple_data = []
+        for _, row in df.iterrows():
+            film_data = {
+                "id": int(row['film_id']),
+                "name": str(row['name'])
+            }
+            simple_data.append(film_data)
+        
+        # Save JSON file
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(simple_data, f, indent=2, ensure_ascii=False)
+        
+        click.echo(f"✅ Converted {len(simple_data)} films to simple JSON")
+        click.echo(f"💾 Saved to: {output_path}")
+        
+        # Show sample of first few entries
+        if simple_data:
+            click.echo(f"\n🔍 Sample entries:")
+            for i, film in enumerate(simple_data[:3]):
+                click.echo(f"  {i+1}. {film['name']} (ID: {film['id']})")
+            if len(simple_data) > 3:
+                click.echo(f"  ... and {len(simple_data) - 3} more films")
+        
+    except Exception as e:
+        click.echo(f"❌ Error converting CSV to simple JSON: {e}", err=True)
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     cli()
