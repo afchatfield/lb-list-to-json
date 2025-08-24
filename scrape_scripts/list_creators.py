@@ -428,7 +428,7 @@ class ListCreator:
 
         if output_format == 'json':
             if simple_json:
-                output_data = [{"film_id": film.get("film_id"), "name": film.get("name")} for film in films]
+                output_data = [{"film_id": int(film.get("film_id", 0)), "name": film.get("name")} for film in films]
             else:
                 output_data = {
                     "title": config.title,

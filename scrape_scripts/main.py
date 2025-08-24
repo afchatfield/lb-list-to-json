@@ -551,7 +551,7 @@ def list_from_files(json_files, output_file, format, title, description, limit, 
         
         if simple_json:
             simple_json_file = output_path.with_suffix('.simple.json')
-            simple_data = [{"id": film.get("film_id") or film.get("id"), "name": film.get("name")} for film in films_list]
+            simple_data = [{"id": int(film.get("film_id") or film.get("id", 0)), "name": film.get("name")} for film in films_list]
             with open(simple_json_file, 'w', encoding='utf-8') as f:
                 json.dump(simple_data, f, indent=2, ensure_ascii=False)
             files_created.append(str(simple_json_file))
