@@ -8,7 +8,12 @@
     "film_id": "[data-film-id]",
     "film_slug": "[data-film-slug]",
     "list_number": "p.list-number",
-    "owner_rating": "[data-owner-rating]"
+    "owner_rating": "[data-owner-rating]",
+    "poster_container": ".poster-container",
+    "data_item_slug": "div[data-item-slug]",
+    "data_film_slug": "div[data-film-slug]",
+    "data_film_id": "div[data-film-id]",
+    "film_img": "img"
   },
   "film_page": {
     "title": "h1.headline-1 .name",
@@ -23,11 +28,26 @@
     "countries": "#tab-details .text-sluglist a[href*='/films/country/']",
     "primary_language": "#tab-details .text-sluglist a[href*='/films/language/']:first-of-type",
     "other_languages": "#tab-details .text-sluglist a[href*='/films/language/']",
-    "studios": "#tab-details .text-sluglist a[href*='/studio/']"
+    "studios": "#tab-details .text-sluglist a[href*='/studio/']",
+    "rating_section": "section.ratings-histogram-chart",
+    "average_rating": ".average-rating .display-rating",
+    "fans_link": "a[href*=\"/fans/\"]",
+    "histogram_bars": ".rating-histogram-bar a"
   },
   "pagination": {
     "pagination_container": ".pagination",
     "page_links": ".pagination li a",
     "last_page": ".pagination li:last-child a"
+  },
+  "attributes": {
+    "data_item_slug": "data-item-slug",
+    "data_film_slug": "data-film-slug",
+    "data_film_id": "data-film-id",
+    "data_item_name": "data-item-name",
+    "data_film_name": "data-film-name",
+    "data_owner_rating": "data-owner-rating",
+    "data_target_link": "data-target-link",
+    "data_item_link": "data-item-link",
+    "alt": "alt"
   }
 }

@@ -171,8 +171,8 @@
     {
       "name": "top_100_african_films",
       "title": "Top 100 African Films",
-      "description": "Top 100 African Films with over 800 watches",
-      "limit": 100,
+      "description": "Top 100 African Films with over 800 watches [NEEDS REFINING]",
+      "limit": 120,
       "countries": ["Algeria", "Angola", "Benin", "Botswana", "Burkina Faso", "Burundi", 
         "Cabo Verde", "Cameroon", "Central African Republic", "Chad", "Comoros", 
         "Republic of the Congo", "Democratic Republic of the Congo", 
@@ -186,7 +186,7 @@
       "cutoff": "watches",
       "cutoff_limit": 800,
       "sort_by": "average_rating",
-      "output_filename": "european_films",
+      "output_filename": "top_100_african_films",
       "min_runtime": 40
     }
   ]
