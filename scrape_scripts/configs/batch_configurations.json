@@ -11,7 +11,8 @@
       "cutoff_limit": 2000,
       "sort_by": "average_rating",
       "min_runtime": 40,
-      "output_filename": "top_250_japanese_films"
+      "output_filename": "top_250_japanese_films",
+      "include_secondary_languages": true
     },
     {
       "name": "top_100_korea",
@@ -24,7 +25,8 @@
       "cutoff_limit": 1000,
       "sort_by": "average_rating",
       "min_runtime": 40,
-      "output_filename": "top_100_korean_films"
+      "output_filename": "top_100_korean_films",
+      "include_secondary_languages": true
     },
     {
       "name": "top_2000_narrative_films",
@@ -59,7 +61,8 @@
       "cutoff_limit": 1000,
       "sort_by": "average_rating",
       "output_filename": "top_100_indan_films",
-      "min_runtime": 40
+      "min_runtime": 40,
+      "include_secondary_languages": true
     },
     {
       "name": "top_200_middle_eastern",
