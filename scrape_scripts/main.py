@@ -481,7 +481,15 @@ def list_from_files(json_files, output_file, format, title, description, limit, 
         
         # 2. Parse comma-separated filter strings into lists
         countries_list = countries.split(',') if countries else None
-        languages_list = languages.split(',') if languages else None
+        
+        # Handle languages - can be either a string (comma-separated) or already a list
+        if languages is None:
+            languages_list = None
+        elif isinstance(languages, list):
+            languages_list = languages  # Already a list from batch processing
+        else:
+            languages_list = languages.split(',')  # String from CLI
+        
         genres_list = genres.split(',') if genres else None
         
         # 3. Define the configuration for the list with all filter parameters
@@ -657,7 +665,7 @@ def batch_lists(ctx, config, input_files_paths, output_dir, simple_json):
                     'sort_by': list_config.get('sort_by', 'average_rating'),
                     'sort_ascending': list_config.get('sort_ascending', False),
                     'countries': ','.join(list_config['countries']) if 'countries' in list_config else None,
-                    'languages': ','.join(list_config['languages']) if 'languages' in list_config else None,
+                    'languages': list_config.get('languages'),  # Pass as list directly
                     'include_secondary_languages': list_config.get('include_secondary_languages', False),
                     'genres': ','.join(list_config['genres']) if 'genres' in list_config else None,
                     'min_year': list_config.get('min_year'),
