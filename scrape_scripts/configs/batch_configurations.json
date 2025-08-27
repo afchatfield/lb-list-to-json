@@ -83,7 +83,7 @@
       "title": "Every Movie With Over 100,000 Watches",
       "description": "Ffilms with over 100.000 watches sorted by watches",
       "cutoff": "watches",
-      "cutoff_limit": 150000,
+      "cutoff_limit": 100000,
       "sort_by": "watches_count_exact",
       "output_filename": "over_100000_watches_films",
       "min_runtime": 40
