@@ -10,16 +10,20 @@
       "filename": "official-top-250-documentary-films"
     },
     {
-      "url": "https://letterboxd.com/el_duderinno/list/letterboxds-top-50-new-zealand-films-as-rated/",
-      "filename": "top_50_new_zealand_films"
+        "url": "https://letterboxd.com/el_duderinno/list/letterboxds-top-50-new-zealand-films-as-rated/",
+        "filename": "top_50_new_zealand_films"
     },
     {
-      "url": "https://letterboxd.com/el_duderinno/list/letterboxds-top-100-african-narrative-films/",
-      "filename": "top_100_african_films"
+        "url": "https://letterboxd.com/el_duderinno/list/letterboxds-top-100-african-narrative-films/",
+        "filename": "top_100_african_films"
     },
     {
-      "url": "https://letterboxd.com/el_duderinno/list/top-100-australian-films-as-rated-by-australian/",
-      "filename": "top_100_australian_films"
+        "url": "https://letterboxd.com/el_duderinno/list/top-100-australian-films-as-rated-by-australian/",
+        "filename": "top_100_australian_films"
+    },
+    {
+      "url": "https://letterboxd.com/el_duderinno/list/letterboxds-top-100-brazilian-films-as-rated/",
+      "filename": "top_100_brazilian_films"
     },
     {
       "url": "https://letterboxd.com/el_duderinno/list/letterboxds-top-100-canadian-films-as-rated/",
@@ -48,6 +52,10 @@
     {
       "url": "https://letterboxd.com/el_duderinno/list/top-100-south-east-asian-films/",
       "filename": "top_100_south_east_asian_films"
+    },
+    {
+      "url": "https://letterboxd.com/el_duderinno/list/letterboxds-top-100-turkish-films-as-rated/",
+      "filename": "top_100_turkish_films"
     },
     {
       "url": "https://letterboxd.com/el_duderinno/list/top-200-chinese-language-films/",
