@@ -2771,10 +2771,16 @@ def _scrape_list_to_simple_json(scraper, url: str, workers: Optional[int] = None
         films = scraper.get_films_from_list(username, list_slug)
     
     # Convert to simple format: [{id, name}, ...]
+    # Strip trailing " (YYYY)" year suffix from names to match existing ratings format
+    import re as _re
     simple_films = []
     for film in films:
         film_id = film.get('film_id')
         name = film.get('name', 'Unknown')
+        
+        # Remove trailing year like " (2023)" but not mid-name years like "District 9 (2009)"
+        # where name itself contains parenthesized text earlier
+        name = _re.sub(r'\s+\(\d{4}\)$', '', name)
         
         if film_id is not None:
             try:

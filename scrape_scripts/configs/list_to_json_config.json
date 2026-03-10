@@ -1,0 +1,117 @@
+{
+  "output_dir": "../ratings",
+  "lists": [
+    {
+      "url": "https://letterboxd.com/el_duderinno/list/every-movie-with-more-than-100000-watched/",
+      "filename": "movies_with_100000_or_more_watched"
+    },
+    {
+      "url": "https://letterboxd.com/official/list/top-250-documentary-films/",
+      "filename": "official-top-250-documentary-films"
+    },
+    {
+      "url": "https://letterboxd.com/el_duderinno/list/letterboxds-top-50-new-zealand-films-as-rated/",
+      "filename": "top_50_new_zealand_films"
+    },
+    {
+      "url": "https://letterboxd.com/el_duderinno/list/letterboxds-top-100-african-narrative-films/",
+      "filename": "top_100_african_films"
+    },
+    {
+      "url": "https://letterboxd.com/el_duderinno/list/top-100-australian-films-as-rated-by-australian/",
+      "filename": "top_100_australian_films"
+    },
+    {
+      "url": "https://letterboxd.com/el_duderinno/list/letterboxds-top-100-canadian-films-as-rated/",
+      "filename": "top_100_canadian_films"
+    },
+    {
+      "url": "https://letterboxd.com/alexanderh/list/top-100-german-films-of-german-members/",
+      "filename": "top_100_german_films_by_german_users"
+    },
+    {
+      "url": "https://letterboxd.com/el_duderinno/list/letterboxds-top-100-italian-films-as-rated/",
+      "filename": "top_100_italian_films_by_italian_users"
+    },
+    {
+      "url": "https://letterboxd.com/el_duderinno/list/letterboxds-top-100-korean-films/",
+      "filename": "top_100_korean_films"
+    },
+    {
+      "url": "https://letterboxd.com/el_duderinno/list/letterboxds-top-100-russian-language-films/",
+      "filename": "top_100_russian_films"
+    },
+    {
+      "url": "https://letterboxd.com/el_duderinno/list/letterboxds-top-100-scandinavian-films-as/",
+      "filename": "top_100_scandinavian_films_by_scandinavian_users"
+    },
+    {
+      "url": "https://letterboxd.com/el_duderinno/list/top-100-south-east-asian-films/",
+      "filename": "top_100_south_east_asian_films"
+    },
+    {
+      "url": "https://letterboxd.com/el_duderinno/list/top-200-chinese-language-films/",
+      "filename": "top_200_chinese_films"
+    },
+    {
+      "url": "https://letterboxd.com/el_duderinno/list/top-200-middle-eastern-films/",
+      "filename": "top_200_middle_eastern_films"
+    },
+    {
+      "url": "https://letterboxd.com/slinkyman/list/letterboxds-top-250-highest-rated-british/",
+      "filename": "top_250_british_films_by_british_users"
+    },
+    {
+      "url": "https://letterboxd.com/el_duderinno/list/top-250-comedy-films/",
+      "filename": "top_250_comedy_films"
+    },
+    {
+      "url": "https://letterboxd.com/el_duderinno/list/letterboxds-top-250-highest-rated-french-1/",
+      "filename": "top_250_french_films_by_french_users"
+    },
+    {
+      "url": "https://letterboxd.com/el_duderinno/list/letterboxds-top-250-indian-films-as-rated/",
+      "filename": "top_250_indian_films"
+    },
+    {
+      "url": "https://letterboxd.com/el_duderinno/list/letterboxds-top-250-japanese-films/",
+      "filename": "top_250_japanese_films"
+    },
+    {
+      "url": "https://letterboxd.com/el_duderinno/list/top-250-romance-films/",
+      "filename": "top_250_romance_films"
+    },
+    {
+      "url": "https://letterboxd.com/el_duderinno/list/letterboxds-top-250-south-american-films/",
+      "filename": "top_250_south_american_films"
+    },
+    {
+      "url": "https://letterboxd.com/el_duderinno/list/letterboxds-top-250-spanish-speaking-films/",
+      "filename": "top_250_spanish_films_by_spanish_users"
+    },
+    {
+      "url": "https://letterboxd.com/el_duderinno/list/top-250-spanish-speaking-films-as-rated-by/",
+      "filename": "top_250_spanish_speaking_films_by_spanish_speaking_users"
+    },
+    {
+      "url": "https://letterboxd.com/el_duderinno/list/letterboxds-top-250-us-films-as-rated-by/",
+      "filename": "top_250_usa_films"
+    },
+    {
+      "url": "https://letterboxd.com/el_duderinno/list/top-500-european-films-as-rated-by-european/",
+      "filename": "top_500_european_films"
+    },
+    {
+      "url": "https://letterboxd.com/el_duderinno/list/letterboxds-top-2000-narrative-feature-films-1/",
+      "filename": "top_2000_highest_rated"
+    },
+    {
+      "url": "https://letterboxd.com/el_duderinno/list/every-movie-with-more-than-100000-watched/",
+      "filename": "top_2000_most_watched"
+    },
+    {
+      "url": "https://letterboxd.com/prof_ratigan/list/top-5000-films-of-all-time-calculated/",
+      "filename": "top_5000_all_time"
+    }
+  ]
+}
