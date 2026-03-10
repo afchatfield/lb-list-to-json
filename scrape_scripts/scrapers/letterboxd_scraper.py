@@ -17,7 +17,7 @@ from core.base_scraper import BaseScraper
 from core.config_loader import selector_config
 from core.letterboxd_utils import (
     FilmDataExtractor, StatsExtractor, ListFilmExtractor, 
-    PaginationHelper
+    PaginationHelper, BrowseFilmExtractor
 )
 from core.parallel_processor import ParallelProcessor, BatchProcessor
 
@@ -74,18 +74,24 @@ class LetterboxdScraper(BaseScraper):
         
         # Initialize utility classes with selectors from config
         film_selectors = selectors.get('film_page', {})
+        stats_selectors = selectors.get('stats_csi', {})
         
         self.film_extractor = FilmDataExtractor(film_selectors)
-        self.stats_extractor = StatsExtractor()
+        self.stats_extractor = StatsExtractor(stats_selectors)
         self.list_extractor = ListFilmExtractor(selectors)
         self.pagination_helper = PaginationHelper(selectors)
+        self.browse_extractor = BrowseFilmExtractor(
+            selectors.get('browse_films', BrowseFilmExtractor.DEFAULT_SELECTORS)
+        )
         
         # Initialize parallel processors
         self.parallel_processor = ParallelProcessor(
             LetterboxdSession, 
             self.letterboxd_session.base_url,
             self.letterboxd_session.session.headers,
-            self.letterboxd_session.delay
+            self.letterboxd_session.delay,
+            film_selectors=film_selectors,
+            stats_selectors=stats_selectors,
         )
         self.batch_processor = BatchProcessor(LetterboxdSession, self.parallel_processor)
     
@@ -250,20 +256,51 @@ class LetterboxdScraper(BaseScraper):
         return self.get_page_soup(suffix)
     
     def get_film_ratings_and_stats(self, film_slug: str) -> Dict[str, Any]:
-        """Get comprehensive ratings and statistics data for a film."""
+        """Get comprehensive ratings and statistics data for a film.
+        
+        Tries /csi/ endpoints first. Falls back to main page meta tag extraction
+        if /csi/ endpoints return 403/fail.
+        """
         combined_data = {'film_slug': film_slug}
+        csi_success = False
         
         try:
-            # Get ratings data
-            ratings_soup = self.get_film_ratings_soup(film_slug)
-            ratings_data = self.film_extractor.extract_ratings_data(ratings_soup)
-            combined_data.update(ratings_data)
+            # Try ratings from /csi/ endpoint
+            try:
+                ratings_soup = self.get_film_ratings_soup(film_slug)
+                ratings_data = self.film_extractor.extract_ratings_data(ratings_soup)
+                if ratings_data:
+                    combined_data.update(ratings_data)
+                    csi_success = True
+            except Exception as e:
+                logging.debug(f"CSI ratings endpoint failed for {film_slug}: {e}")
             
-            # Get stats data
-            stats_soup = self.get_film_stats_soup(film_slug)
-            stats_data = self.stats_extractor.extract_stats_data(stats_soup)
-            combined_data.update(stats_data)
+            # Try stats from /csi/ endpoint
+            try:
+                stats_soup = self.get_film_stats_soup(film_slug)
+                stats_data = self.stats_extractor.extract_stats_data(stats_soup)
+                if stats_data:
+                    combined_data.update(stats_data)
+                    csi_success = True
+            except Exception as e:
+                logging.debug(f"CSI stats endpoint failed for {film_slug}: {e}")
             
+            # Fallback: extract average_rating from main page meta tag
+            if not csi_success:
+                logging.warning(f"Both /csi/ endpoints failed for {film_slug}, trying meta tag fallback")
+                try:
+                    soup = self.get_film_soup(film_slug)
+                    meta_data = self.film_extractor.extract_ratings_from_meta(soup)
+                    if meta_data:
+                        combined_data.update(meta_data)
+                    else:
+                        logging.error(
+                            f"ALL extraction methods failed for {film_slug}: "
+                            f"/csi/ endpoints and meta tag fallback all returned no data"
+                        )
+                except Exception as e:
+                    logging.error(f"Meta tag fallback also failed for {film_slug}: {e}")
+        
         except Exception as e:
             logging.error(f"Error getting ratings and stats for {film_slug}: {e}")
         
@@ -289,6 +326,150 @@ class LetterboxdScraper(BaseScraper):
         return self.parallel_processor.get_ratings_stats_parallel(
             basic_films, max_workers, film_progress_callback
         )
+    
+    # ==================== BROWSE/COUNTRY FILMS METHODS ====================
+    
+    def scrape_browse_films(self, production_country: str = None, rating_country: str = None,
+                           language: str = None,
+                           sort: str = 'rating', limit: int = None,
+                           delay: float = 2.5,
+                           progress_callback=None,
+                           known_slugs: set = None) -> List[Dict[str, Any]]:
+        """
+        Scrape films from the Letterboxd browse/AJAX pages with country/language filters.
+        
+        Args:
+            production_country: Country slug for films produced in (e.g. 'france', 'italy'). Optional.
+            rating_country: Country slug for weighting by that country's ratings. Optional.
+            language: Language slug (e.g. 'french', 'italian'). Optional.
+            sort: Sort method ('rating', 'popular', etc.)
+            limit: Max number of *matched* films to collect. None = all available.
+                   When known_slugs is provided, limit counts only films that match
+                   the filter. Scraping continues until enough matches are found.
+            delay: Delay between page requests (2.5s recommended to avoid Cloudflare)
+            progress_callback: Optional callback(page, total_pages, matched, total)
+            known_slugs: Optional set of film slugs to filter against. When provided,
+                        the limit applies to matched films only.
+        
+        Returns:
+            List of film dicts with keys: film_slug, name, name_with_year, film_id,
+            year, average_rating, target_link, browse_rank
+        """
+        import time
+        all_films = []
+        page = 1
+        total_pages = None  # None = unknown (browse pages don't have numbered pagination)
+        original_delay = self.letterboxd_session.delay
+        
+        # Fresh session to avoid stale Cloudflare tokens from prior requests
+        self.letterboxd_session.refresh_session()
+        
+        # Use slower delay for browse pages to avoid Cloudflare
+        self.letterboxd_session.delay = delay
+        
+        try:
+            while True:
+                url = BrowseFilmExtractor.build_ajax_url(production_country, rating_country, language, sort, page)
+                full_url = f"{self.letterboxd_session.base_url.rstrip('/')}/{url.lstrip('/')}"
+                logging.info(f"Fetching browse page {page}: {full_url}")
+                
+                try:
+                    # Use the cloudscraper session directly (not BaseSession.get) to avoid
+                    # retry logic interfering with Cloudflare challenge-solving
+                    response = self.letterboxd_session.session.get(
+                        full_url, timeout=self.letterboxd_session.timeout
+                    )
+                    
+                    if response.status_code == 403:
+                        # Refresh the session to get a new TLS fingerprint and retry
+                        logging.warning(f"Got 403 on page {page}, refreshing session and retrying after {delay * 2}s...")
+                        time.sleep(delay * 2)
+                        self.letterboxd_session.refresh_session()
+                        response = self.letterboxd_session.session.get(
+                            full_url, timeout=self.letterboxd_session.timeout
+                        )
+                    
+                    if response.status_code == 403:
+                        # Second attempt: longer wait + another refresh
+                        logging.warning(f"Still 403 on page {page}, second refresh after {delay * 3}s...")
+                        time.sleep(delay * 3)
+                        self.letterboxd_session.refresh_session()
+                        response = self.letterboxd_session.session.get(
+                            full_url, timeout=self.letterboxd_session.timeout
+                        )
+                    
+                    if response.status_code != 200:
+                        logging.warning(f"Page {page} returned status {response.status_code}")
+                        if page == 1:
+                            raise Exception(f"Failed to fetch page 1: HTTP {response.status_code}")
+                        break
+                    
+                    soup = BeautifulSoup(response.text, 'html.parser')
+                    
+                except Exception as e:
+                    logging.warning(f"Failed to fetch page {page}: {e}")
+                    if page == 1:
+                        raise  # First page failure is fatal
+                    break
+                
+                # Check for Cloudflare challenge
+                title_el = soup.select_one('title')
+                if title_el and 'moment' in title_el.get_text().lower():
+                    logging.warning(f"Cloudflare challenge on page {page}, stopping")
+                    break
+                
+                # Get total pages from first page (may be None if no numbered pagination)
+                if page == 1:
+                    total_pages = self.browse_extractor.get_total_pages(soup)
+                    if total_pages:
+                        logging.info(f"Total pages detected: {total_pages}")
+                    else:
+                        logging.info("No numbered pagination found — will paginate using next/prev links")
+                
+                # Extract films — start_rank continues from previous pages
+                page_films = self.browse_extractor.extract_films_from_browse(
+                    soup, start_rank=len(all_films) + 1
+                )
+                logging.info(f"Page {page}: extracted {len(page_films)} films")
+                
+                if not page_films:
+                    logging.info(f"No films on page {page}, stopping")
+                    break
+                
+                all_films.extend(page_films)
+                
+                # Count matched films if filtering
+                if known_slugs is not None:
+                    matched_count = sum(1 for f in all_films if f.get('film_slug') in known_slugs)
+                else:
+                    matched_count = len(all_films)
+                
+                if progress_callback:
+                    progress_callback(page, total_pages, matched_count, len(all_films))
+                
+                # Check if we have enough (matched films, not raw total)
+                if limit and matched_count >= limit:
+                    logging.info(f"Reached {matched_count} matched films (limit: {limit}), stopping")
+                    break
+                
+                # Check for next page
+                has_next = self.browse_extractor.has_next_page(soup)
+                if not has_next:
+                    logging.info(f"No next page after page {page}, stopping")
+                    break
+                
+                # Rate limit between pages with random jitter to appear less bot-like
+                import random
+                jitter = random.uniform(0.5, 1.5)
+                actual_delay = delay + jitter
+                logging.info(f"Waiting {actual_delay:.1f}s before next page...")
+                time.sleep(actual_delay)
+                
+                page += 1
+        finally:
+            self.letterboxd_session.delay = original_delay
+        
+        return all_films
     
     # ==================== LEGACY COMPATIBILITY METHODS ====================
     

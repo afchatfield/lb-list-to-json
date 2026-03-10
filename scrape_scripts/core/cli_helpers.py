@@ -280,7 +280,7 @@ def execute_scraping_by_mode(scraper, mode: str, username: str, list_slug: str,
                 return scraper.get_all_films_from_list_parallel(
                     username, list_slug, workers, page_progress, film_progress)
             else:
-                return scraper.get_all_films_from_list_paginated(
+                return scraper.get_all_films_from_list_sequential(
                     username, list_slug, page_progress, film_progress)
         finally:
             page_pbar.close()

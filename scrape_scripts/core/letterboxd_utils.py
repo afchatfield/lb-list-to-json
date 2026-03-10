@@ -283,54 +283,106 @@ class FilmDataExtractor(DataExtractor):
                 themes.append(item)
         
         return genres, themes
+    
+    def extract_ratings_from_meta(self, soup: BeautifulSoup) -> Dict[str, Any]:
+        """Fallback: extract average rating from main film page twitter:data2 meta tag.
+        
+        This works when /csi/ endpoints are unavailable. Only provides average_rating,
+        not total_ratings, fans_count, or ratings_breakdown.
+        
+        Args:
+            soup: BeautifulSoup of the main film page (/film/{slug}/)
+            
+        Returns:
+            Dict with 'average_rating' if found, empty dict otherwise
+        """
+        ratings_data = {}
+        
+        # Try twitter:data2 meta tag: <meta name="twitter:data2" content="4.13 out of 5">
+        meta_selector = self.selectors.get('average_rating_meta', "meta[name='twitter:data2']")
+        meta_attr = self.selectors.get('average_rating_meta_attr', 'content')
+        meta_tag = soup.select_one(meta_selector)
+        
+        if meta_tag:
+            content = meta_tag.get(meta_attr, '')
+            if content:
+                match = re.search(r'([\d.]+)\s+out of\s+5', content)
+                if match:
+                    try:
+                        ratings_data['average_rating'] = float(match.group(1))
+                    except ValueError:
+                        pass
+        
+        if ratings_data:
+            logging.debug(f"Extracted average_rating={ratings_data.get('average_rating')} from meta tag")
+        else:
+            logging.debug("No average rating found in meta tags")
+        
+        return ratings_data
 
 
 class StatsExtractor(DataExtractor):
     """Specialized extractor for film statistics."""
     
-    SELECTORS = {
-        'stats_container': '.production-statistic-list',
-        'watches_stat': '.production-statistic.-watches',
-        'lists_stat': '.production-statistic.-lists',
-        'likes_stat': '.production-statistic.-likes',
+    DEFAULT_SELECTORS = {
+        'container': '.production-statistic-list',
+        'watches': '.production-statistic.-watches',
+        'lists': '.production-statistic.-lists',
+        'likes': '.production-statistic.-likes',
         'label': '.label',
-        'link': 'a'
+        'link': 'a',
+        'watches_title_pattern': 'Watched by ([\\d,]+)',
+        'lists_title_pattern': 'Appears in ([\\d,]+)',
+        'likes_title_pattern': 'Liked by ([\\d,]+)',
     }
+    
+    def __init__(self, selectors: Dict[str, Any] = None):
+        """Initialize with optional selectors from config."""
+        self.selectors = selectors if selectors else self.DEFAULT_SELECTORS
     
     def extract_stats_data(self, soup: BeautifulSoup) -> Dict[str, Any]:
         """Extract statistical information from film stats page."""
         stats_data = {}
         
-        stats_container = soup.select_one(self.SELECTORS['stats_container'])
+        stats_container = soup.select_one(self.selectors.get('container', '.production-statistic-list'))
         if not stats_container:
             return stats_data
         
         # Extract each type of statistic
-        stats_data.update(self._extract_single_stat(stats_container, 'watches', 'Watched by'))
-        stats_data.update(self._extract_single_stat(stats_container, 'lists', 'Appears in'))
-        stats_data.update(self._extract_single_stat(stats_container, 'likes', 'Liked by'))
+        stats_data.update(self._extract_single_stat(
+            stats_container, 'watches',
+            self.selectors.get('watches_title_pattern', 'Watched by ([\\d,]+)')))
+        stats_data.update(self._extract_single_stat(
+            stats_container, 'lists',
+            self.selectors.get('lists_title_pattern', 'Appears in ([\\d,]+)')))
+        stats_data.update(self._extract_single_stat(
+            stats_container, 'likes',
+            self.selectors.get('likes_title_pattern', 'Liked by ([\\d,]+)')))
         
         return stats_data
     
     def _extract_single_stat(self, container: BeautifulSoup, stat_type: str, title_pattern: str) -> Dict[str, Any]:
         """Extract a single type of statistic."""
         result = {}
-        stat_elem = container.select_one(f'.production-statistic.-{stat_type}')
+        stat_selector = self.selectors.get(stat_type, f'.production-statistic.-{stat_type}')
+        stat_elem = container.select_one(stat_selector)
         
         if stat_elem:
-            # Get from label text
-            label = stat_elem.select_one(self.SELECTORS['label'])
+            # Get from label text (abbreviated, e.g. "712K")
+            label_selector = self.selectors.get('label', '.label')
+            label = stat_elem.select_one(label_selector)
             if label:
                 label_text = label.get_text(strip=True)
                 count = self.extract_number_from_text(label_text)
                 if count:
                     result[f'{stat_type}_count'] = count
             
-            # Get exact count from title attribute
-            link = stat_elem.select_one(self.SELECTORS['link'])
+            # Get exact count from title attribute (e.g. "Watched by 711,602 members")
+            link_selector = self.selectors.get('link', 'a')
+            link = stat_elem.select_one(link_selector)
             if link:
                 title_attr = link.get('title', '')
-                exact_count = self.extract_count_from_title(title_attr, f'{title_pattern} ([\\d,]+)')
+                exact_count = self.extract_count_from_title(title_attr, title_pattern)
                 if exact_count:
                     result[f'{stat_type}_count_exact'] = exact_count
         
@@ -498,3 +550,147 @@ class ListFilmExtractor(DataExtractor):
             'list_position': str(position),
             'owner_rating': owner_rating
         }
+
+
+class BrowseFilmExtractor(DataExtractor):
+    """Extractor for films from Letterboxd browse/AJAX pages (country/language/genre filters).
+    
+    These pages use a different HTML structure than list pages:
+    - Films are in <li class="posteritem"> elements
+    - Data attributes are on nested <div class="react-component"> elements
+    - Rating is on the <li> element itself as data-average-rating
+    """
+    
+    DEFAULT_SELECTORS = {
+        'ajax_base': '/films/ajax',
+        'film_container': 'li.posteritem',
+        'film_data': '.react-component',
+        'attributes': {
+            'name': 'data-item-name',
+            'slug': 'data-item-slug',
+            'film_id': 'data-film-id',
+            'link': 'data-item-link',
+            'rating': 'data-average-rating',
+        },
+        'pagination': {
+            'next': '.paginate-nextprev .next',
+            'pages': '.paginate-pages li a',
+        },
+    }
+    
+    def __init__(self, selectors: Dict[str, Any] = None):
+        self.selectors = selectors if selectors else self.DEFAULT_SELECTORS
+    
+    def extract_films_from_browse(self, soup: BeautifulSoup, start_rank: int = 1) -> List[Dict[str, Any]]:
+        """Extract film data from a browse/AJAX page response.
+        
+        Args:
+            soup: Parsed HTML of the AJAX response
+            start_rank: The rank number for the first film on this page
+                        (e.g. page 2 with 72 per page → start_rank=73)
+        """
+        films = []
+        container_sel = self.selectors.get('film_container', 'li.posteritem')
+        data_sel = self.selectors.get('film_data', '.react-component')
+        attrs = self.selectors.get('attributes', self.DEFAULT_SELECTORS['attributes'])
+        
+        items = soup.select(container_sel)
+        for idx, item in enumerate(items):
+            rc = item.select_one(data_sel)
+            if not rc:
+                continue
+            
+            slug = rc.get(attrs.get('slug', 'data-item-slug'), '')
+            if not slug:
+                continue
+            
+            name_raw = rc.get(attrs.get('name', 'data-item-name'), '')
+            film_id = rc.get(attrs.get('film_id', 'data-film-id'), '')
+            link = rc.get(attrs.get('link', 'data-item-link'), '')
+            rating_str = item.get(attrs.get('rating', 'data-average-rating'), '')
+            
+            # Parse name and year from "Title (Year)" format
+            name = name_raw
+            year = None
+            if name_raw and name_raw.endswith(')'):
+                import re
+                match = re.match(r'^(.+?)\s*\((\d{4})\)$', name_raw)
+                if match:
+                    name = match.group(1).strip()
+                    year = int(match.group(2))
+            
+            rating = None
+            if rating_str:
+                try:
+                    rating = float(rating_str)
+                except ValueError:
+                    pass
+            
+            films.append({
+                'browse_rank': start_rank + idx,
+                'film_slug': slug,
+                'name': name,
+                'name_with_year': name_raw,
+                'film_id': film_id,
+                'year': year,
+                'average_rating': rating,
+                'target_link': link,
+            })
+        
+        return films
+    
+    def has_next_page(self, soup: BeautifulSoup) -> bool:
+        """Check if there's a next page in pagination."""
+        next_sel = self.selectors.get('pagination', {}).get('next', '.paginate-nextprev .next')
+        return soup.select_one(next_sel) is not None
+    
+    def get_total_pages(self, soup: BeautifulSoup) -> Optional[int]:
+        """Get total page count from pagination links.
+        
+        Returns:
+            Total number of pages, or None if total is unknown
+            (browse AJAX pages only have next/prev, not numbered page links).
+        """
+        pages_sel = self.selectors.get('pagination', {}).get('pages', '.paginate-pages li a')
+        page_links = soup.select(pages_sel)
+        if not page_links:
+            # No numbered page links — common for browse/AJAX pages.
+            # Return None to signal unknown total (caller should use has_next_page instead).
+            return None
+        # Get highest page number from link text
+        max_page = 1
+        for link in page_links:
+            text = link.get_text(strip=True)
+            if text.isdigit():
+                max_page = max(max_page, int(text))
+        return max_page
+    
+    @staticmethod
+    def build_ajax_url(production_country: str = None, rating_country: str = None, 
+                      language: str = None, sort: str = 'rating', page: int = 1) -> str:
+        """Build the AJAX endpoint URL for browse pages.
+        
+        Uses the /in/{rating_country}/ path segment to get Letterboxd's weighted
+        local preference ranking (not just raw average rating).
+        
+        Format: /films/ajax/by/{sort}/in/{rating_country}/country/{production_country}/language/{language}/page/{page}/
+        
+        Args:
+            production_country: Country slug for films produced in (e.g. 'france', 'italy', 'japan'). Optional.
+            rating_country: Country slug for weighting ratings by that country's preferences. Optional.
+            language: Language slug (e.g. 'french', 'italian'). Optional.
+            sort: Sort method ('rating', 'popular', etc.)
+            page: Page number (1-indexed)
+        """
+        parts = ['/films/ajax']
+        parts.append(f'/by/{sort}')
+        if rating_country:
+            parts.append(f'/in/{rating_country}')
+        if production_country:
+            parts.append(f'/country/{production_country}')
+        if language:
+            parts.append(f'/language/{language}')
+        if page > 1:
+            parts.append(f'/page/{page}')
+        parts.append('/')
+        return ''.join(parts)

@@ -81,7 +81,7 @@
     {
       "name": "every_movie_above_100000_watches",
       "title": "Every Movie With Over 100,000 Watches",
-      "description": "Ffilms with over 100.000 watches sorted by watches",
+      "description": "Films with over 100.000 watches sorted by watches",
       "cutoff": "watches",
       "cutoff_limit": 100000,
       "sort_by": "watches_count_exact",
@@ -91,7 +91,7 @@
     {
       "name": "top_100_south_east_asia",
       "title": "Top 100 Southern-East Asian Films",
-      "description": "Top 100 Scandinavian films based on Letterboxd ratings with minimum 1000 watches [NEEDS CURATING]",
+      "description": "Top 100 Southern-East Asian films based on Letterboxd ratings with minimum 1000 watches [NEEDS CURATING]",
       "limit": 115,
       "countries": ["Myanmar", "Nepal", "Bhutan", "Bangladesh", "Sri Lanka", "Thailand", 
         "Lao People's Democratic Republic", "Vietnam", "Cambodia", "Malaysia", "Philippines", "Indonesia",

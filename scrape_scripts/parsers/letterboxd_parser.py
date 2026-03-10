@@ -31,6 +31,7 @@ class LetterboxdParser(BaseParser):
         # Add Letterboxd-specific cleaners
         self.cleaners.update({
             'rating': self._clean_rating,
+            'average_rating': self._clean_average_rating,
             'runtime': self._clean_runtime,
             'genre_list': self._clean_genre_list,
             'cast_list': self._clean_cast_list,
@@ -67,7 +68,7 @@ class LetterboxdParser(BaseParser):
             'primary_language': 'text',
             'other_languages': 'language_list',
             # New ratings and stats fields
-            'average_rating': 'rating',
+            'average_rating': 'average_rating',
             'total_ratings': 'stat_count',
             'fans_count': 'stat_count',
             'watches_count': 'stat_count',
@@ -144,6 +145,23 @@ class LetterboxdParser(BaseParser):
         except (ValueError, TypeError):
             return None
     
+    def _clean_average_rating(self, rating: Union[str, int, float]) -> Optional[float]:
+        """Clean average rating (native 5-star scale, no conversion).
+        
+        Unlike owner_rating which uses Letterboxd's 0-10 internal scale,
+        average_rating from CSI endpoints and meta tags is already on a 0-5 scale.
+        """
+        if pd.isna(rating) or rating == '':
+            return None
+        try:
+            rating = float(rating)
+            if 0 <= rating <= 5:
+                return rating
+            else:
+                return None
+        except (ValueError, TypeError):
+            return None
+
     def _clean_runtime(self, runtime: Union[str, int]) -> Optional[int]:
         """Extract runtime in minutes from text or preserve integer."""
         if pd.isna(runtime) or runtime == '':

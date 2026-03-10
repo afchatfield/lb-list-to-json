@@ -4,10 +4,13 @@ Handles multi-threaded scraping operations efficiently.
 """
 
 import logging
+import time
+import threading
 import multiprocessing
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Optional, Callable
 from bs4 import BeautifulSoup
+from tqdm import tqdm
 
 from core.base_session import BaseSession
 from core.letterboxd_utils import FilmDataExtractor, StatsExtractor, ListFilmExtractor, PaginationHelper
@@ -16,14 +19,25 @@ from core.letterboxd_utils import FilmDataExtractor, StatsExtractor, ListFilmExt
 class ParallelProcessor:
     """Handles parallel processing for various scraping operations."""
     
-    def __init__(self, session_class, base_url: str, headers: Dict[str, str], delay: float = 0.2):
+    def __init__(self, session_class, base_url: str, headers: Dict[str, str], delay: float = 0.2,
+                 film_selectors: Dict[str, Any] = None, stats_selectors: Dict[str, Any] = None):
         self.session_class = session_class
         self.base_url = base_url
         self.headers = headers
         self.delay = delay
-        self.film_extractor = FilmDataExtractor()
-        self.stats_extractor = StatsExtractor()
+        self.film_extractor = FilmDataExtractor(film_selectors)
+        self.stats_extractor = StatsExtractor(stats_selectors)
         self.list_extractor = ListFilmExtractor()
+        # Thread-local storage for session reuse
+        self._thread_local = threading.local()
+    
+    def _get_thread_session(self):
+        """Get or create a session for the current thread. Reuses sessions to avoid
+        creating new cloudscraper instances per request (which triggers Cloudflare challenges)."""
+        if not hasattr(self._thread_local, 'session'):
+            self._thread_local.session = self.session_class()
+            self._thread_local.session.configure_for_site()
+        return self._thread_local.session
     
     def scrape_pages_parallel(self, page_tasks: List[Dict[str, Any]], max_workers: Optional[int] = None,
                              progress_callback: Optional[Callable] = None) -> List[Dict[str, Any]]:
@@ -120,14 +134,38 @@ class ParallelProcessor:
     
     def get_ratings_stats_parallel(self, basic_films: List[Dict[str, Any]], max_workers: Optional[int] = None,
                                   progress_callback: Optional[Callable] = None) -> List[Dict[str, Any]]:
-        """Get ratings and stats data in parallel."""
+        """Get ratings and stats data in parallel.
+        
+        Includes fail-fast: tests the first film before launching full parallel batch.
+        If the first film extraction returns no data at all, raises an error.
+        """
         films_with_slugs = [f for f in basic_films if f.get('film_slug')]
         
         if not films_with_slugs:
             return basic_films
         
+        # Fail-fast: test first film before launching full batch
+        first_film = films_with_slugs[0]
+        test_result = self._get_ratings_stats_safe(first_film)
+        if not test_result or len(test_result) <= 1:  # Only 'film_slug' key = no data extracted
+            logging.error(
+                f"FAIL-FAST: First film '{first_film.get('film_slug')}' returned no ratings/stats data. "
+                f"Result: {test_result}. "
+                f"This likely means all /csi/ endpoints are blocked and meta tag fallback also failed. "
+                f"Stopping batch to avoid wasting time on {len(films_with_slugs)} films."
+            )
+            raise RuntimeError(
+                f"Ratings/stats extraction failed on first film '{first_film.get('film_slug')}'. "
+                f"All extraction methods returned no data. Check network access to Letterboxd /csi/ endpoints."
+            )
+        
+        logging.info(
+            f"Fail-fast check passed for '{first_film.get('film_slug')}': "
+            f"extracted {len(test_result) - 1} data fields. Proceeding with full batch."
+        )
+        
         if max_workers is None:
-            max_workers = min(8, multiprocessing.cpu_count(), len(films_with_slugs))
+            max_workers = min(4, multiprocessing.cpu_count(), len(films_with_slugs))
         
         enhanced_films = []
         completed = 0
@@ -162,6 +200,9 @@ class ParallelProcessor:
         films_without_slugs = [f for f in basic_films if not f.get('film_slug')]
         enhanced_films.extend(films_without_slugs)
         
+        # ── Cleanup pass: re-fetch any films still missing ratings or stats ──
+        enhanced_films = self._retry_missing_data(enhanced_films)
+        
         # Sort by list position
         try:
             enhanced_films.sort(key=lambda x: int(x.get('list_position', 999999)))
@@ -170,6 +211,111 @@ class ParallelProcessor:
         
         return enhanced_films
     
+    # ── Ratings and stats fields expected from each CSI endpoint ──
+    RATINGS_FIELDS = ('average_rating', 'total_ratings', 'fans_count')
+    STATS_FIELDS = ('watches_count', 'lists_count', 'likes_count')
+    
+    def _film_missing_ratings(self, film: Dict[str, Any]) -> bool:
+        """Check if a film is missing any ratings-summary fields.
+        
+        Skips fans_count check for films with <2000 watches, as obscure films
+        typically don't have fans data and retrying wastes time.
+        """
+        watches = film.get('watches_count', 0)
+        
+        # Always check average_rating and total_ratings
+        if not film.get('average_rating') or not film.get('total_ratings'):
+            return True
+        
+        # Only check fans_count for films with 2000+ watches
+        if watches >= 2000 and not film.get('fans_count'):
+            return True
+        
+        return False
+    
+    def _film_missing_stats(self, film: Dict[str, Any]) -> bool:
+        """Check if a film is missing any stats fields."""
+        return any(not film.get(f) for f in self.STATS_FIELDS)
+    
+    def _retry_missing_data(self, films: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Sequential cleanup pass to re-fetch any films still missing ratings or stats.
+        
+        Runs much slower (one film at a time with generous delays) to avoid
+        triggering Cloudflare rate limits. Uses a fresh session.
+        """
+        # Identify films that need re-fetching
+        needs_ratings = [(i, f) for i, f in enumerate(films)
+                         if f.get('film_slug') and self._film_missing_ratings(f)]
+        needs_stats = [(i, f) for i, f in enumerate(films)
+                       if f.get('film_slug') and self._film_missing_stats(f)]
+        
+        total_retries = len(needs_ratings) + len(needs_stats)
+        if total_retries == 0:
+            logging.info("Cleanup pass: all films have complete data, nothing to retry.")
+            return films
+        
+        logging.info(
+            f"Cleanup pass: {len(needs_ratings)} films missing ratings, "
+            f"{len(needs_stats)} missing stats — re-fetching sequentially"
+        )
+        
+        # Use a single fresh session for the sequential retry pass
+        session = self.session_class()
+        session.configure_for_site()
+        
+        with tqdm(total=total_retries,
+                  desc="🔄 Retrying missing data (slow, 1-by-1)",
+                  unit="req",
+                  bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]',
+                  dynamic_ncols=True) as pbar:
+            
+            # Re-fetch missing ratings
+            for idx, film in needs_ratings:
+                slug = film['film_slug']
+                pbar.set_postfix_str(f"ratings: {slug}")
+                soup = self._fetch_csi_with_retry(
+                    session,
+                    f"/csi/film/{slug}/ratings-summary/",
+                    slug, "ratings-retry",
+                    max_retries=5
+                )
+                if soup:
+                    data = self.film_extractor.extract_ratings_data(soup)
+                    if data:
+                        films[idx].update(data)
+                time.sleep(1.5)   # generous delay between sequential retries
+                pbar.update(1)
+            
+            # Re-fetch missing stats
+            for idx, film in needs_stats:
+                slug = film['film_slug']
+                pbar.set_postfix_str(f"stats: {slug}")
+                soup = self._fetch_csi_with_retry(
+                    session,
+                    f"/csi/film/{slug}/stats/",
+                    slug, "stats-retry",
+                    max_retries=5
+                )
+                if soup:
+                    data = self.stats_extractor.extract_stats_data(soup)
+                    if data:
+                        films[idx].update(data)
+                time.sleep(1.5)
+                pbar.update(1)
+        
+        # Report final status
+        still_missing_ratings = sum(1 for f in films if f.get('film_slug') and self._film_missing_ratings(f))
+        still_missing_stats = sum(1 for f in films if f.get('film_slug') and self._film_missing_stats(f))
+        if still_missing_ratings or still_missing_stats:
+            logging.warning(
+                f"After cleanup: still {still_missing_ratings} missing ratings, "
+                f"{still_missing_stats} missing stats"
+            )
+        else:
+            logging.info("Cleanup pass: all films now have complete data ✓")
+        
+        return films
+    
     def _scrape_single_page(self, page_info: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Scrape a single page of films (thread-safe)."""
         page = page_info['page']
@@ -177,8 +323,7 @@ class ParallelProcessor:
         start_position = page_info.get('start_position', 1)
         
         try:
-            session = self.session_class()
-            session.configure_for_site()
+            session = self._get_thread_session()
             response = session.get(page_url)
             
             if response is None:
@@ -202,8 +347,7 @@ class ParallelProcessor:
             return None
         
         try:
-            session = self.session_class()
-            session.configure_for_site()
+            session = self._get_thread_session()
             film_url = f"/film/{film_slug}/"
             
             response = session.get(film_url)
@@ -218,33 +362,107 @@ class ParallelProcessor:
             logging.debug(f"Error getting details for {film_slug}: {e}")
             return None
     
+    def _fetch_csi_with_retry(self, session, url: str, film_slug: str, endpoint_name: str, 
+                              max_retries: int = 3) -> Optional[BeautifulSoup]:
+        """Fetch a CSI endpoint with retry and exponential backoff for rate limiting.
+        
+        Returns parsed BeautifulSoup on success, None on failure.
+        """
+        for attempt in range(max_retries):
+            try:
+                response = session.session.get(
+                    session._build_url(url),
+                    timeout=session.timeout
+                )
+                
+                if response.status_code == 200:
+                    return BeautifulSoup(response.text, 'html.parser')
+                
+                if response.status_code in (403, 429, 503):
+                    # Rate limited or blocked — back off and retry
+                    wait_time = (2 ** attempt) + (attempt * 0.5)
+                    logging.debug(
+                        f"CSI {endpoint_name} returned {response.status_code} for {film_slug} "
+                        f"(attempt {attempt + 1}/{max_retries}), waiting {wait_time:.1f}s"
+                    )
+                    time.sleep(wait_time)
+                    continue
+                
+                # Other error status — don't retry
+                logging.debug(f"CSI {endpoint_name} returned {response.status_code} for {film_slug}")
+                return None
+                
+            except Exception as e:
+                wait_time = (2 ** attempt) + (attempt * 0.5)
+                logging.debug(
+                    f"CSI {endpoint_name} error for {film_slug} (attempt {attempt + 1}/{max_retries}): {e}, "
+                    f"waiting {wait_time:.1f}s"
+                )
+                time.sleep(wait_time)
+        
+        logging.warning(f"CSI {endpoint_name} failed after {max_retries} retries for {film_slug}")
+        return None
+
     def _get_ratings_stats_safe(self, film: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Thread-safe method to get ratings and stats data."""
+        """Thread-safe method to get ratings and stats data.
+        
+        Reuses a per-thread session to avoid creating new cloudscraper instances
+        per request. Includes retry with exponential backoff for rate-limited responses.
+        Falls back to meta tag extraction if CSI endpoints fail.
+        """
         film_slug = film.get('film_slug')
         if not film_slug:
             return None
         
         try:
-            session = self.session_class()
-            session.configure_for_site()
+            session = self._get_thread_session()
             
             combined_data = {'film_slug': film_slug}
+            ratings_ok = False
+            stats_ok = False
             
-            # Get ratings data
+            # Get ratings data from /csi/ endpoint
             ratings_url = f"/csi/film/{film_slug}/ratings-summary/"
-            response = session.get(ratings_url)
-            if response:
-                soup = BeautifulSoup(response.text, 'html.parser')
+            soup = self._fetch_csi_with_retry(session, ratings_url, film_slug, "ratings")
+            if soup:
                 ratings_data = self.film_extractor.extract_ratings_data(soup)
-                combined_data.update(ratings_data)
+                if ratings_data:
+                    combined_data.update(ratings_data)
+                    ratings_ok = True
             
-            # Get stats data
+            # Small delay between the two CSI calls to avoid burst detection
+            time.sleep(0.3)
+            
+            # Get stats data from /csi/ endpoint
             stats_url = f"/csi/film/{film_slug}/stats/"
-            response = session.get(stats_url)
-            if response:
-                soup = BeautifulSoup(response.text, 'html.parser')
+            soup = self._fetch_csi_with_retry(session, stats_url, film_slug, "stats")
+            if soup:
                 stats_data = self.stats_extractor.extract_stats_data(soup)
-                combined_data.update(stats_data)
+                if stats_data:
+                    combined_data.update(stats_data)
+                    stats_ok = True
+            
+            # Fallback: if BOTH /csi/ endpoints failed, try main page meta tag
+            if not ratings_ok and not stats_ok:
+                logging.warning(f"Both /csi/ endpoints failed for {film_slug}, trying main page meta tag fallback")
+                try:
+                    main_url = f"/film/{film_slug}/"
+                    response = session.session.get(
+                        session._build_url(main_url),
+                        timeout=session.timeout
+                    )
+                    if response and response.status_code == 200:
+                        soup = BeautifulSoup(response.text, 'html.parser')
+                        meta_data = self.film_extractor.extract_ratings_from_meta(soup)
+                        if meta_data:
+                            combined_data.update(meta_data)
+                        else:
+                            logging.error(f"ALL extraction methods failed for {film_slug}")
+                except Exception as e:
+                    logging.error(f"Meta tag fallback also failed for {film_slug}: {e}")
+            
+            # Add delay after processing each film to pace overall throughput
+            time.sleep(self.delay)
             
             return combined_data
             

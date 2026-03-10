@@ -1,9 +1,11 @@
 """
-Base session class for efficient web scraping with requests.
+Base session class for efficient web scraping with cloudscraper.
 Handles session management, headers, rate limiting, and error handling.
+Uses cloudscraper to bypass Cloudflare protection on /csi/ endpoints.
 """
 
 import requests
+import cloudscraper
 import time
 import logging
 from typing import Dict, Optional, Any
@@ -36,7 +38,9 @@ class BaseSession(ABC):
         self.delay = delay
         self.timeout = timeout
         self.max_retries = max_retries
-        self.session = requests.Session()
+        self.session = cloudscraper.create_scraper(
+            browser={'browser': 'chrome', 'platform': 'darwin', 'mobile': False}
+        )
         
         # Set default headers
         default_headers = {
@@ -54,6 +58,19 @@ class BaseSession(ABC):
         
         # Setup logging
         self.logger = logging.getLogger(self.__class__.__name__)
+    
+    def refresh_session(self):
+        """Create a fresh cloudscraper session (new TLS fingerprint + cookies).
+        
+        Useful when the current session is flagged by Cloudflare after many requests.
+        Uses cloudscraper's own browser-mimicking headers for best Cloudflare bypass.
+        """
+        self.session = cloudscraper.create_scraper(
+            browser={'browser': 'chrome', 'platform': 'darwin', 'mobile': False}
+        )
+        # Don't re-apply custom headers — cloudscraper's defaults are optimised
+        # for bypassing Cloudflare (full Chrome UA, brotli encoding, etc.)
+        self.logger.info("Refreshed cloudscraper session with new TLS fingerprint")
     
     def get(self, url: str, **kwargs) -> requests.Response:
         """
@@ -80,6 +97,26 @@ class BaseSession(ABC):
                     timeout=self.timeout,
                     **kwargs
                 )
+                
+                # Handle rate limiting explicitly before raise_for_status
+                if response.status_code in (429, 503):
+                    wait_time = (2 ** attempt) + 1
+                    self.logger.warning(
+                        f"Rate limited ({response.status_code}) on {full_url}, "
+                        f"waiting {wait_time:.1f}s (attempt {attempt + 1}/{self.max_retries + 1})"
+                    )
+                    time.sleep(wait_time)
+                    continue
+                
+                if response.status_code == 403 and attempt < self.max_retries:
+                    wait_time = (2 ** attempt) + 1
+                    self.logger.warning(
+                        f"Forbidden (403) on {full_url}, "
+                        f"retrying in {wait_time:.1f}s (attempt {attempt + 1}/{self.max_retries + 1})"
+                    )
+                    time.sleep(wait_time)
+                    continue
+                
                 response.raise_for_status()
                 
                 # Rate limiting

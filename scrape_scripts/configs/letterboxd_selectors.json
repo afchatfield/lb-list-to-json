@@ -32,12 +32,52 @@
     "rating_section": "section.ratings-histogram-chart",
     "average_rating": ".average-rating .display-rating",
     "fans_link": "a[href*=\"/fans/\"]",
-    "histogram_bars": ".rating-histogram-bar a"
+    "histogram_bars": ".rating-histogram-bar a",
+    "average_rating_meta": "meta[name='twitter:data2']",
+    "average_rating_meta_attr": "content"
+  },
+  "ratings_csi": {
+    "endpoint_pattern": "/csi/film/{slug}/ratings-summary/",
+    "section": "section.ratings-histogram-chart",
+    "average_rating_link": ".average-rating .display-rating",
+    "average_rating_title_pattern": "average of ([\\d.]+)",
+    "total_ratings_title_pattern": "based on ([\\d,]+)",
+    "fans_link": "a[href*='/fans/']",
+    "histogram_bars": ".rating-histogram-bar a",
+    "histogram_title_pattern": "([\\d,]+)\\s*(★+(?:½)?|half-★)\\s*ratings\\s*\\((\\d+)%\\)"
+  },
+  "stats_csi": {
+    "endpoint_pattern": "/csi/film/{slug}/stats/",
+    "container": ".production-statistic-list",
+    "watches": ".production-statistic.-watches",
+    "lists": ".production-statistic.-lists",
+    "likes": ".production-statistic.-likes",
+    "label": ".label",
+    "link": "a",
+    "watches_title_pattern": "Watched by ([\\d,]+)",
+    "lists_title_pattern": "Appears in ([\\d,]+)",
+    "likes_title_pattern": "Liked by ([\\d,]+)"
   },
   "pagination": {
     "pagination_container": ".pagination",
     "page_links": ".pagination li a",
     "last_page": ".pagination li:last-child a"
+  },
+  "browse_films": {
+    "ajax_base": "/films/ajax",
+    "film_container": "li.posteritem",
+    "film_data": ".react-component",
+    "attributes": {
+      "name": "data-item-name",
+      "slug": "data-item-slug",
+      "film_id": "data-film-id",
+      "link": "data-item-link",
+      "rating": "data-average-rating"
+    },
+    "pagination": {
+      "next": ".paginate-nextprev .next",
+      "pages": ".paginate-pages li a"
+    }
   },
   "attributes": {
     "data_item_slug": "data-item-slug",
